@@ -1,0 +1,415 @@
+"""可视化控制台后端：跑真实 HTTP（回环 + 随机端口），不需要浏览器。
+
+覆盖三件容易出错的事：**访问控制**（令牌 / Host）、**报文日志**（TX/RX 成对）、
+**异常映射**（限力中止 → 409、未连接 → 409、未知路径 → 409）。
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import sys
+import threading
+import unittest
+import urllib.error
+import urllib.request
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from romanbo import cli  # noqa: E402
+from romanbo.webui_page import PAGE  # noqa: E402
+from romanbo.servo import LoadLimitExceeded  # noqa: E402
+from romanbo.webui import WebConsole, make_server  # noqa: E402
+
+TOKEN = "unit-test-token"
+
+
+class _ServerMixin:
+    """起一个回环服务（端口 0 = 由系统分配），并给出带令牌的调用助手。"""
+
+    console: WebConsole
+    httpd: object
+    port: int
+
+    @classmethod
+    def start_server(cls, console: WebConsole) -> None:
+        cls.console = console
+        cls.httpd = make_server("127.0.0.1", 0, console, TOKEN)
+        cls.port = cls.httpd.server_address[1]
+        cls.thread = threading.Thread(target=cls.httpd.serve_forever,
+                                      kwargs={"poll_interval": 0.05}, daemon=True)
+        cls.thread.start()
+
+    @classmethod
+    def stop_server(cls) -> None:
+        cls.httpd.shutdown()
+        cls.httpd.server_close()
+        cls.console.disconnect()
+
+    def call(self, path: str, body: object = None, *, token: str | None = TOKEN,
+             host: str | None = None, raw_body: bytes | None = None
+             ) -> tuple[int, object]:
+        """返回 ``(状态码, 解析后的 JSON)``；4xx/5xx 不抛异常。"""
+        url = f"http://127.0.0.1:{self.port}{path}"
+        data = None
+        if raw_body is not None:
+            data = raw_body
+        elif body is not None:
+            data = json.dumps(body).encode("utf-8")
+        request = urllib.request.Request(url, data=data,
+                                         method="GET" if data is None else "POST")
+        if token is not None:
+            request.add_header("X-Robot-Token", token)
+        if host is not None:
+            request.add_header("Host", host)
+        try:
+            with urllib.request.urlopen(request, timeout=10) as resp:
+                payload = resp.read().decode("utf-8")
+                status = resp.status
+        except urllib.error.HTTPError as exc:
+            payload = exc.read().decode("utf-8")
+            status = exc.code
+        try:
+            return status, json.loads(payload)
+        except json.JSONDecodeError:
+            return status, payload
+
+
+class TestWebConsole(_ServerMixin, unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        console = WebConsole(mock=True)
+        console.connect()
+        console.scan()
+        cls.start_server(console)
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls.stop_server()
+
+    def setUp(self) -> None:
+        # 每个用例前把「在线集合」恢复到已知状态，避免用例互相影响
+        self.console.scan(1, 17)
+
+    # -- 访问控制 ---------------------------------------------------------- #
+
+    def test_page_carries_the_token(self) -> None:
+        status, html = self.call("/")                       # 首页不需要令牌
+        self.assertEqual(status, 200)
+        self.assertIn("舵机控制台", html)
+        self.assertIn(TOKEN, html)
+        self.assertNotIn("__TOKEN__", html, "占位符没被替换")
+
+    def test_api_requires_token(self) -> None:
+        self.assertEqual(self.call("/api/state", token=None)[0], 401)
+        self.assertEqual(self.call("/api/state", token="wrong-token")[0], 401)
+
+    def test_api_rejects_foreign_host(self) -> None:
+        """防 DNS rebinding：Host 不是回环名就拒绝（令牌正确也不行）。"""
+        status, payload = self.call("/api/state", host="evil.example")
+        self.assertEqual(status, 403)
+        self.assertIn("Host", str(payload))
+
+    def test_token_via_query_string(self) -> None:
+        url = f"http://127.0.0.1:{self.port}/api/state?token={TOKEN}"
+        with urllib.request.urlopen(url, timeout=10) as resp:
+            self.assertEqual(resp.status, 200)
+
+    # -- 状态与发现 -------------------------------------------------------- #
+
+    def test_state_reports_connection_and_online(self) -> None:
+        status, payload = self.call("/api/state")
+        self.assertEqual(status, 200)
+        self.assertTrue(payload["connected"])
+        self.assertTrue(payload["mock"])
+        self.assertEqual(payload["online"], list(range(1, 18)))
+
+    def test_scan_endpoint(self) -> None:
+        status, payload = self.call("/api/scan", {"start": 1, "end": 4})
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["found"], [1, 2, 3, 4])
+
+    # -- 读数 -------------------------------------------------------------- #
+
+    def test_servo_config_and_live(self) -> None:
+        status, cfg = self.call("/api/servo/1")
+        self.assertEqual(status, 200)
+        for key in ("position", "pid", "position_limit", "load", "margin",
+                    "temperature", "angle"):
+            self.assertIn(key, cfg)
+        self.assertEqual(cfg["position"], 512)
+        self.assertEqual(cfg["angle"], 0.0)
+
+        status, live = self.call("/api/servo/1/live")
+        self.assertEqual(status, 200)
+        self.assertEqual(set(live), {"id", "position", "load", "temperature"})
+
+    def test_capture_reads_back(self) -> None:
+        status, payload = self.call("/api/capture")
+        self.assertEqual(status, 200)
+        self.assertIn("1", payload["positions"])
+
+    # -- 写入与运动 -------------------------------------------------------- #
+
+    def test_goto_moves_and_logs_frames(self) -> None:
+        status, payload = self.call("/api/servo/2/goto", {"adc": 640, "max_load": 60})
+        self.assertEqual(status, 409, "只给限力不给速度时应当拒绝")
+        self.assertIn("速度", str(payload))
+
+        status, payload = self.call("/api/servo/2/goto", {"adc": 640})
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["target"], 640)
+        self.assertEqual(self.call("/api/servo/2/live")[1]["position"], 640)
+
+        status, frames = self.call("/api/frames?since=0")
+        self.assertEqual(status, 200)
+        hexes = [f["hex"] for f in frames["frames"]]
+        self.assertTrue(any(h.startswith("FF FF 02 08 09") for h in hexes),
+                        f"没有发往 ID2 的位置指令：{hexes[:5]}")
+        self.assertTrue(all(set(f) <= {"seq", "dir", "hex", "at"} for f in frames["frames"]))
+        self.assertEqual(frames["latest"], frames["frames"][-1]["seq"])
+
+    def test_frames_incremental_since(self) -> None:
+        _, first = self.call("/api/frames?since=0")
+        latest = first["latest"]
+        self.call("/api/servo/3/torque", {"on": True})
+        _, delta = self.call(f"/api/frames?since={latest}")
+        self.assertTrue(delta["frames"], "增量查询应拿到新报文")
+        self.assertTrue(all(f["seq"] > latest for f in delta["frames"]))
+
+    def test_angle_input_is_converted(self) -> None:
+        status, payload = self.call("/api/servo/4/goto", {"angle": 30.0})
+        self.assertEqual(status, 200)
+        self.assertAlmostEqual(payload["target"], 614, delta=1)
+
+    def test_pid_and_limit_write_then_readback(self) -> None:
+        status, payload = self.call("/api/servo/5/pid", {"p": 100, "i": 1, "d": 20})
+        self.assertEqual((status, payload["pid"]), (200, [100, 1, 20]))
+        status, payload = self.call("/api/servo/5/limit", {"min": 255, "max": 768})
+        self.assertEqual((status, payload["position_limit"]), (200, [255, 768]))
+        cfg = self.call("/api/servo/5")[1]
+        self.assertEqual(cfg["pid"], [100, 1, 20])
+        self.assertEqual(cfg["position_limit"], [255, 768])
+
+    def test_torque_and_multi_move(self) -> None:
+        self.assertEqual(self.call("/api/servo/6/torque", {"on": False})[0], 200)
+        status, payload = self.call("/api/move", {"targets": {"6": 600, "7": 400}})
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["joints"], 2)
+        # JSON 对象的键必然是字符串
+        self.assertEqual({int(k): v for k, v in payload["targets"].items()},
+                         {6: 600, 7: 400})
+        self.assertEqual(self.call("/api/servo/6/live")[1]["position"], 600)
+        self.assertEqual(self.call("/api/servo/7/live")[1]["position"], 400)
+
+    def test_stop_all_uses_online_ids(self) -> None:
+        status, payload = self.call("/api/stop_all", {})
+        self.assertEqual(status, 200)
+        self.assertFalse(payload["broadcast"])
+        self.assertEqual(payload["ids"], list(range(1, 18)))
+
+    # -- 异常映射 ---------------------------------------------------------- #
+
+    def test_unknown_path_and_bad_body(self) -> None:
+        self.assertEqual(self.call("/api/nope")[0], 409)
+        self.assertEqual(self.call("/api/servo/1/nope")[0], 409)
+        status, _ = self.call("/api/servo/1/goto", raw_body=b"{not json")
+        self.assertEqual(status, 409)
+
+    def test_id_out_of_range(self) -> None:
+        status, payload = self.call("/api/servo/99/live")
+        self.assertEqual(status, 409)
+        self.assertIn("越界", str(payload))
+
+    def test_goto_requires_a_target(self) -> None:
+        status, payload = self.call("/api/servo/8/goto", {})
+        self.assertEqual(status, 409)
+        self.assertIn("adc", str(payload))
+
+
+class TestLoadLimitMapping(_ServerMixin, unittest.TestCase):
+    """限力中止要变成 409 + aborted，而不是 500。"""
+
+    class _AbortingConsole(WebConsole):
+        def goto(self, id_, **kwargs):                    # noqa: ANN001, ANN003
+            raise LoadLimitExceeded(id_, 129, 10, 1, 973)
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        console = cls._AbortingConsole(mock=True)
+        console.connect()
+        cls.start_server(console)
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls.stop_server()
+
+    def test_load_limit_is_409(self) -> None:
+        status, payload = self.call("/api/servo/8/goto", {"adc": 900, "speed_dps": 120})
+        self.assertEqual(status, 409)
+        self.assertTrue(payload["aborted"])
+        self.assertEqual(payload["detail"]["load"], 129)
+        self.assertIn("软件限力", payload["error"])
+
+
+class TestDisconnectedConsole(_ServerMixin, unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.start_server(WebConsole(mock=False))
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls.stop_server()
+
+    def test_operations_require_connection(self) -> None:
+        self.assertFalse(self.call("/api/state")[1]["connected"])
+        for path, body in (("/api/scan", {}), ("/api/servo/1/live", None),
+                           ("/api/stop_all", {})):
+            with self.subTest(path=path):
+                status, payload = self.call(path, body)
+                self.assertEqual(status, 409)
+                self.assertIn("尚未连接", str(payload))
+
+    def test_connect_without_port_is_rejected(self) -> None:
+        status, payload = self.call("/api/connect", {"mock": False})
+        self.assertEqual(status, 409)
+        self.assertIn("串口", str(payload))
+
+    def test_connect_mock_then_operate(self) -> None:
+        status, payload = self.call("/api/connect", {"mock": True})
+        self.assertEqual(status, 200)
+        self.assertTrue(payload["connected"])
+        self.assertEqual(self.call("/api/scan", {"start": 1, "end": 3})[1]["found"],
+                         [1, 2, 3])
+        self.assertEqual(self.call("/api/disconnect", {})[1]["connected"], False)
+
+
+class TestPageApiContract(_ServerMixin, unittest.TestCase):
+    """页面里调用的**每个**接口都必须真的存在（防前后端漂移）。
+
+    这张表是按 `romanbo/webui_page.py` 的调用列出来的：前端用 ``api(path)`` 不带
+    请求体时发 GET、带请求体时发 POST。历史上就漏在这里——页面用 GET 调
+    ``/api/capture`` 与 ``/api/disconnect``，服务端却只挂了 POST。
+    """
+
+    #: (方法, 路径, 请求体) —— 与页面里的 api(...) 调用一一对应
+    CALLS = (
+        ("POST", "/api/connect", {"mock": True}),
+        ("POST", "/api/scan", {"start": 1, "end": 4}),
+        ("GET", "/api/ports", None),
+        ("GET", "/api/state", None),
+        ("GET", "/api/servo/1", None),
+        ("GET", "/api/servo/1/live", None),
+        ("POST", "/api/servo/1/goto", {"adc": 600, "speed_dps": 60,
+                                       "max_load": 100, "load_check_every": 3}),
+        ("POST", "/api/servo/1/torque", {"on": True}),
+        ("POST", "/api/servo/1/pid", {"p": 50, "i": 0, "d": 5}),
+        ("POST", "/api/servo/1/limit", {"min": 1, "max": 1023}),
+        ("POST", "/api/servo/1/margin", {"value": 5}),
+        ("POST", "/api/servo/1/led", {"value": 1}),
+        ("POST", "/api/servo/1/calib", {}),
+        ("GET", "/api/capture", None),
+        ("POST", "/api/move", {"targets": {"1": 600, "2": 500}}),
+        ("POST", "/api/stop_all", {}),
+        ("GET", "/api/frames?since=0", None),
+        ("POST", "/api/disconnect", {}),
+    )
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.start_server(WebConsole(mock=False))       # 由上面的 connect 自己连
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls.stop_server()
+
+    def test_every_page_call_succeeds(self) -> None:
+        for method, path, body in self.CALLS:
+            with self.subTest(path=path):
+                status, payload = self.call(path, body)
+                self.assertEqual(status, 200, f"{method} {path} -> {status} {payload}")
+
+    def test_contract_table_still_matches_page(self) -> None:
+        """表里的接口必须仍被页面调用，否则说明页面删了功能、表要同步。
+
+        页面为了拼 id 会写成 ``"/api/servo/" + sel + "/live"``，所以对这类路径按
+        **末段**匹配；纯字面量的（如 ``/api/state``）直接整串匹配。
+        """
+        from romanbo.webui_page import PAGE
+
+        for _method, path, _body in self.CALLS:
+            literal = path.split("?")[0]
+            if literal in PAGE:
+                continue
+            tail = literal.rsplit("/", 1)[-1]
+            if tail.isdigit():                      # /api/servo/1 —— 页面里是拼接的
+                self.assertIn("/api/servo/", PAGE)
+                continue
+            self.assertTrue(f'"/{tail}"' in PAGE or f'/{tail}"' in PAGE,
+                            f"页面已不再调用 {literal}，请同步本表")
+
+
+class TestCliWiring(unittest.TestCase):
+    def test_webui_subcommand_is_offline_and_wired(self) -> None:
+        args = cli.build_parser().parse_args(["webui", "--http-port", "0"])
+        self.assertIs(args.func, cli.cmd_webui)
+        self.assertIs(args.need_robot, False)
+        self.assertEqual(args.http_port, 0)
+        self.assertEqual(args.http_host, "127.0.0.1")
+
+    def test_webui_accepts_serial_and_mock_flags(self) -> None:
+        args = cli.build_parser().parse_args(
+            ["--port", "/dev/ttyUSB0", "--mock", "webui", "--open"])
+        self.assertEqual(args.port, "/dev/ttyUSB0")
+        self.assertTrue(args.mock)
+        self.assertTrue(args.open_browser)
+
+
+class TestPageIntegrity(unittest.TestCase):
+    """页面自身的静态一致性——**不需要浏览器**。
+
+    前端最常见的自伤就是「JS 查了一个 HTML 里不存在的 id」或「id 写重了」，
+    这两种都能靠源码静态比对抓出来；否则只有在浏览器里点一下才会暴露。
+    """
+
+    HTML_IDS = re.compile(r'\sid="([A-Za-z0-9_-]+)"')
+    DOLLAR_REF = re.compile(r'\$\("#([A-Za-z0-9_-]+)"\)')
+    BY_ID_REF = re.compile(r'getElementById\("([A-Za-z0-9_-]+)"\)')
+
+    def _ids(self) -> set:
+        return set(self.HTML_IDS.findall(PAGE))
+
+    def test_no_duplicate_element_ids(self) -> None:
+        ids = self.HTML_IDS.findall(PAGE)
+        duplicates = sorted({i for i in ids if ids.count(i) > 1})
+        self.assertEqual(duplicates, [], f"HTML 里出现重复 id：{duplicates}")
+
+    def test_referenced_elements_exist(self) -> None:
+        declared = self._ids()
+        referenced = set(self.DOLLAR_REF.findall(PAGE))
+        referenced |= set(self.BY_ID_REF.findall(PAGE))
+        missing = sorted(referenced - declared)
+        self.assertEqual(missing, [], f"JS 引用了不存在的 id：{missing}")
+
+    def test_control_id_list_exists(self) -> None:
+        """``CTRL_IDS`` 是「按 id 批量禁用」的清单，写错一个就会静默失效。"""
+        declared = self._ids()
+        block = re.search(r"const CTRL_IDS = \[(.*?)\];", PAGE, re.S)
+        self.assertIsNotNone(block, "找不到 CTRL_IDS 定义")
+        listed = set(re.findall(r'"([A-Za-z0-9_-]+)"', block.group(1)))
+        self.assertTrue(listed, "CTRL_IDS 是空的")
+        self.assertEqual(sorted(listed - declared), [],
+                         "CTRL_IDS 里引用了不存在的 id")
+
+    def test_token_placeholder_is_unique(self) -> None:
+        self.assertEqual(PAGE.count("__TOKEN__"), 1,
+                         "占位符必须恰好出现一次，否则替换会漏或覆盖错位置")
+
+    def test_no_leftover_debug_markers(self) -> None:
+        for marker in ("console.log", "TODO", "FIXME", "debugger"):
+            self.assertNotIn(marker, PAGE, f"页面里残留了调试标记：{marker}")
+
+
+if __name__ == "__main__":  # pragma: no cover
+    unittest.main()

@@ -7,6 +7,15 @@
 ## [Unreleased]
 
 ### 新增
+- **可视化控制台**：`romanbo/webui.py`（后端）+ `romanbo/webui_page.py`（前端）+
+  `romanbo webui` 子命令 —— 只监听本机的 Web 界面：扫描、实时读数、单/多关节运动、
+  参数读写，以及**原始收发报文日志**。只用标准库（`http.server`），页面是单个内联
+  HTML（无 CDN、无框架），运行期依赖仍只有 pyserial；带访问令牌、Host 校验，默认只绑
+  回环；报文日志抓在传输层，与串口助手看到的一致。见 `docs/WEBUI.md`
+- `romanbo.transport.list_serial_ports()`：串口枚举与占用探测提成共用函数，`ports`
+  子命令改为调用它（行为不变）
+- `tests/test_webui.py`：30 项后端回归，含访问控制（令牌 / Host）、**前后端接口契约**
+  （页面调用的每个接口都必须真实存在）与页面静态一致性（JS 引用的 id 必须存在）
 - **文档站**：`mkdocs.yml`（Material 主题）+ `docs/`，其中 **API 参考由 docstring 自动生成**
   （mkdocstrings），`mkdocs build --strict` 已在 CI 中作为门禁
 - `docs/evidence/`：真机探针日志归档为可独立复核的原始证据，并附证据说明
@@ -54,6 +63,11 @@
   仓库地址放到 `[project.urls]`。同时移除已弃用的 License 分类器（改由 `license` 声明）
 
 ### 变更（行为）
+- **软件限力的阈值指导被真机复测修正**：2026-09-27 测得**起步第 1 步**的负荷冲击达
+  **128~147**（加速涌流，不是卡死），运动中只有约 85——原文档建议的「阈值取 60 左右」
+  会把正常起步判成故障。现改为推荐「阈值 100 + `load_check_every=3`」，
+  详见 `docs/LOAD_LIMITING.md` 与 `docs/FINDINGS.md` §3。控制台里限力默认**关闭**，
+  并新增「负荷检查间隔」输入（默认 3）；命令行暂未暴露 `--load-every`
 - `RomanboRobot.capture()` 默认 **`retries=0`**（探测式）：对不存在的 ID 只等一次超时。
   此前默认重试 2 次，17 通道只接 2 个舵机时整批回读会多花约 13 s。
   需要更强容错时显式传 `retries=2`。`Servo.get_position()` 相应新增 `retries=` 参数。

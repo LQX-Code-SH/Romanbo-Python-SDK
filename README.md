@@ -26,7 +26,9 @@
 - **软件限力**：轮询实测负荷，超阈值立即停止（硬件没有可用的力矩环）
 - **真机验证过的时序**：总线静默期、帧间隔、重试策略都有实测依据，不是猜的
 - **离线可用**：`.rsc` 解析、报文编码、`--mock` 模拟器、60 条基准报文自检全部零依赖
-- **工程化**：129 项单元测试（无需硬件）+ CI（Python 3.8~3.13）+ 类型标注（`py.typed`）
+- **可视化控制台**：`python -m romanbo webui` 起一个只监听本机的 Web 界面——扫描、运动、
+  读写参数，并把**原始收发报文**实时打在页面上（见[可视化控制台](docs/WEBUI.md)）
+- **工程化**：170 项单元测试（无需硬件）+ CI（Python 3.8~3.13）+ 类型标注（`py.typed`）
 
 ## 安装
 
@@ -63,6 +65,9 @@ python -m romanbo --port /dev/ttyUSB0 move --targets 8:600,10:480 --speed 30 --r
 
 # 播放工程文件（examples/data/demo.rsc 是随仓库样例）
 python -m romanbo --port /dev/ttyUSB0 play examples/data/demo.rsc --speed 60
+
+# 可视化控制台（浏览器操作；--mock 无需硬件，换 --port … 即用真机）
+python -m romanbo webui --mock
 ```
 
 完整命令与退出码见 [命令行参考](docs/CLI.md)。
@@ -129,6 +134,7 @@ with RomanboRobot("/dev/ttyUSB0") as robot:      # 或 connect("COM3", mock=True
 |---|---|
 | [安装与环境](docs/INSTALL.md) | 依赖、三种用法、Linux/macOS 权限、平台差异、并发边界 |
 | [命令行参考](docs/CLI.md) | 全部子命令、全局选项、退出码、常用组合 |
+| [可视化控制台](docs/WEBUI.md) | 只监听本机的 Web 界面：连接/扫描、实时读数、运动与参数读写、原始报文日志 |
 | [协议速览](docs/PROTOCOL.md) | 帧格式、地址分配、命令码表、应答约定 |
 | [字节级协议规格](docs/SERVO_SPEC.md) | 逐命令请求/回包布局、时序、数据语义、未验证清单 |
 | [真机实测结论](docs/FINDINGS.md) | 全部实测数据与结论（角速度、负荷、时序、帧间隔…） |
@@ -148,7 +154,7 @@ with RomanboRobot("/dev/ttyUSB0") as robot:      # 或 connect("COM3", mock=True
 romanbo/            核心包（protocol / transport / servo / robot / rsc / joints / cli / golden）
 docs/               文档（协议规格、实测结论、API 参考、证据日志）
 examples/           示例脚本 + data/demo.rsc 样例工程
-tests/              129 项单元测试（不需要硬件）
+tests/              170 项单元测试（不需要硬件）
 tools/servo_probe.py  单舵机原始十六进制联调工具
 ```
 

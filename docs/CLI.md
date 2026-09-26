@@ -34,6 +34,7 @@ python -m romanbo [全局选项] <命令> [命令选项]
 | `set-id` / `reset` | 改 ID / 复位 |
 | `play` | `文件 [--scene N] [--ids 8,10] [--loop] [--speed 度每秒] [--speed-scale 周期倍率] [--no-capture] [--max-load] [--torque on/off]`；`--ids` 只驱动在线关节（整机文件务必指定，否则向不存在的 ID 发帧会触发 0.4 s 总线静默期） |
 | `info` | 打印 `.rsc` 工程摘要（离线） |
+| `webui` | 启动**本地可视化控制台**（浏览器操作）：`--http-host`（默认 `127.0.0.1`）、`--http-port`（默认 `8765`）、`--open`（自动开浏览器）；配合全局 `-p/--port` 或 `--mock` 会自动连接。见[可视化控制台](WEBUI.md) |
 
 ## 退出码
 
@@ -67,6 +68,10 @@ python -m romanbo --port COM3 move --targets 8:600,10:480 --speed 30 --readback
 python -m romanbo --port COM3 teach --ids 8,10 --file taught.json --period 500
 python -m romanbo export --file taught.json --out taught.rsc
 python -m romanbo --port COM3 play taught.rsc --ids 8,10 --speed 15
+
+# 可视化控制台（浏览器里操作，见 docs/WEBUI.md）
+python -m romanbo webui --mock                  # 无需硬件
+python -m romanbo webui --port /dev/ttyUSB0     # 真机
 ```
 
 > 详细的 `.rsc` 播放语义见 [工程文件](RSC.md)；限力参数怎么选见 [软件限力](LOAD_LIMITING.md)。

@@ -365,4 +365,39 @@ class MockTransport(Transport):
         return P.make_frame(P.ack_for(cmd), sid)
 
 
-__all__ = ["Transport", "SerialTransport", "MockTransport"]
+def list_serial_ports(*, probe: bool = True,
+                      baudrate: int = P.BAUDRATE_DEFAULT) -> List[Dict[str, object]]:
+    """枚举系统串口，并（默认）实测能否打开。
+
+    返回 ``[{"device", "description", "hwid", "busy", "error"?}]``。``busy=True``
+    表示打不开——POSIX 下多为**权限不足**或**已被占用**（本库用排他打开探测，
+    见 `SerialTransport` 的说明）。
+
+    :raises RuntimeError: 未安装 pyserial
+    """
+    try:
+        from serial.tools import list_ports
+    except ImportError as exc:
+        raise RuntimeError("需要 pyserial：pip install pyserial") from exc
+    rows: List[Dict[str, object]] = []
+    for info in sorted(list_ports.comports(), key=lambda i: i.device):
+        row: Dict[str, object] = {
+            "device": info.device,
+            "description": info.description or "",
+            "hwid": info.hwid or "",
+        }
+        if probe:
+            try:
+                import serial
+                handle = serial.Serial(info.device, baudrate, timeout=0.1,
+                                       exclusive=True)
+                handle.close()
+                row["busy"] = False
+            except Exception as exc:                          # noqa: BLE001
+                row["busy"] = True
+                row["error"] = type(exc).__name__
+        rows.append(row)
+    return rows
+
+
+__all__ = ["Transport", "SerialTransport", "MockTransport", "list_serial_ports"]

@@ -24,7 +24,7 @@ from . import golden, joints as J, protocol as P
 from .robot import RomanboRobot
 from .rsc import DEFAULT_ADC, RscProject, write_project
 from .servo import LoadLimitExceeded
-from .transport import MockTransport
+from .transport import MockTransport, list_serial_ports
 
 #: 软件限力中止时的退出码
 EXIT_LOAD_LIMIT = 4
@@ -134,28 +134,11 @@ def _port_hint(port: str, exc: BaseException) -> str:
 def cmd_ports(robot, args) -> int:
     """列出系统串口并**检测是否被占用**（离线命令，不需要 ``--port``）。"""
     try:
-        from serial.tools import list_ports
-    except ImportError:                                      # pragma: no cover
-        print("未安装 pyserial，无法枚举串口", file=sys.stderr)
+        # POSIX 下用排他打开探测，能检出「已被别人独占」的情况
+        rows = list_serial_ports()
+    except RuntimeError as exc:                              # 未安装 pyserial
+        print(str(exc), file=sys.stderr)
         return 1
-    rows = []
-    for info in sorted(list_ports.comports(), key=lambda i: i.device):
-        row: Dict[str, object] = {
-            "device": info.device,
-            "description": info.description or "",
-            "hwid": info.hwid or "",
-        }
-        try:
-            import serial
-            # POSIX 下用排他打开：能检出「已被别人独占」的情况
-            handle = serial.Serial(info.device, 115200, timeout=0.1,
-                                   exclusive=True)
-            handle.close()
-            row["busy"] = False
-        except Exception as exc:                             # noqa: BLE001
-            row["busy"] = True
-            row["error"] = type(exc).__name__
-        rows.append(row)
 
     if args.json:
         _emit(rows, args)
@@ -192,6 +175,19 @@ def _show_io(robot: RomanboRobot, sent_before: int, args: argparse.Namespace) ->
 # --------------------------------------------------------------------------- #
 # 命令实现
 # --------------------------------------------------------------------------- #
+
+def cmd_webui(robot: Optional[RomanboRobot], args: argparse.Namespace) -> int:
+    """启动本地可视化控制台：在浏览器里扫描、运动、读参数、看原始报文。"""
+    from .webui import serve
+    try:
+        return serve(host=args.http_host, port=args.http_port,
+                     serial_port=args.port, mock=args.mock,
+                     baudrate=args.baudrate, ack_timeout=args.timeout,
+                     open_browser=args.open_browser)
+    except OSError as exc:                                   # 端口被占用等
+        print(f"无法启动控制台：{exc}", file=sys.stderr)
+        return 1
+
 
 def cmd_selftest(robot: Optional[RomanboRobot], args: argparse.Namespace) -> int:
     passed, failed, details = golden.run(verbose=not args.json)
@@ -1003,6 +999,18 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("file")
     p.set_defaults(func=cmd_info, need_robot=False)
 
+    p = sub.add_parser("webui", help="启动本地可视化控制/调试界面（浏览器操作）",
+                       description="启动一个只监听本机的 Web 控制台：扫描舵机、"
+                                   "实时读数、单/多关节运动、参数读写、原始报文日志。"
+                                   "默认地址 http://127.0.0.1:8765，需带令牌链接打开。")
+    p.add_argument("--http-host", default="127.0.0.1",
+                   help="HTTP 监听地址（默认只监听本机回环）")
+    p.add_argument("--http-port", type=int, default=8765,
+                   help="HTTP 端口（默认 8765；0 = 由系统分配）")
+    p.add_argument("--open", dest="open_browser", action="store_true",
+                   help="启动后自动打开浏览器")
+    p.set_defaults(func=cmd_webui, need_robot=False)
+
     return parser
 
 
@@ -1037,7 +1045,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    if args.command in ("selftest", "info", "ports", "export"):
+    if args.command in ("selftest", "info", "ports", "export", "webui"):
         return args.func(None, args)
 
     try:
