@@ -37,7 +37,7 @@ class ServoConfig:
 
     @property
     def current_limit(self) -> Optional[int]:
-        """旧名，等价于 :attr:`load`（该字段读的是实测负荷）。"""
+        """旧名，等价于 `load`（该字段读的是实测负荷）。"""
         return self.load
 
     @property
@@ -64,7 +64,7 @@ class ServoConfig:
 class LoadLimitExceeded(Exception):
     """运动过程中实测负荷超过阈值（软件限力触发）。
 
-    :param id: 触发限力的舵机 ID
+    :param id_: 触发限力的舵机 ID
     :param load: 触发时读到的负荷值
     :param limit: 设定的阈值
     :param step: 触发时的步进序号（1 起）
@@ -94,7 +94,7 @@ class Servo:
       数据段首字节恒为 ``0x00``（状态位），数值从第 2 字节开始；
       **应答延迟实测仅 10~20 ms**。
       但要注意**总线静默期**：一条寻址到无设备 ID 的帧之后，舵机约 0.4 s 内
-      不再应答（见 :data:`romanbo.protocol.BUS_QUARANTINE`）——这才是"看起来
+      不再应答（见 `romanbo.protocol.BUS_QUARANTINE`）——这才是"看起来
       很慢"的真正原因。
     * **SET 类命令（0x06~0x11、0x47、0x20、0x21、0x23…）不应答**
       （实测 ``SetTorque`` 超时无回包），因此 ``set_*`` 默认「只发不等」，
@@ -142,12 +142,12 @@ class Servo:
                      wait: bool = False) -> None:
         """位置指令（ADC 0..1023，512 为中位）。
 
-        :param level: **出力档位**（:data:`~romanbo.protocol.LEVEL_HIGH`=0 最大、
+        :param level: **出力档位**（`romanbo.protocol.LEVEL_HIGH`=0 最大、
             ``LEVEL_MIDDLE``=1、``LEVEL_LOW``=2、``LEVEL_WHEEL``=3 不生效）。
             实测同一位移下峰值负荷：H 178 / M 110 / L 38。
             缺省沿用 ``torque`` 参数（默认 1 = M）。
         :param torque: ``level`` 的旧名；**它不是使能开关**——使能用
-            :meth:`torque`（``0x10``），档位 0 也照样能运动。
+            `torque`（``0x10``），档位 0 也照样能运动。
         :param period_ms: 非空时先发 ``SET_PERIOD``（协议文档行为；实测该固件忽略它）。
         """
         if period_ms is not None:
@@ -156,7 +156,7 @@ class Servo:
                                         relative=relative, level=level),
                    wait=wait)
 
-    #: 与 :meth:`set_position` 同名语义的别名
+    #: 与 `set_position` 同名语义的别名
     move = set_position
 
     def move_at_speed(self, target: int, dps: float, *,
@@ -171,20 +171,20 @@ class Servo:
                       ) -> List[int]:
         """以**实际角速度**（度/秒）运动到 ``target``（ADC），返回中间目标序列。
 
-        .. important::
+        !!! important
             实测该舵机固件**忽略 ``SET_PERIOD(0x0B)``**（周期 60 / 3000 / 8000 ms
             下，44° 位移都以最大速度约 0.24 s 走完），所以角速度只能靠
             **步进逼近**实现：每隔 ``interval_ms`` 下发一个中间目标，使平均角速度
-            = ``dps``。间隔默认由 :func:`romanbo.joints.pick_step_interval` 按
+            = ``dps``。间隔默认由 `romanbo.joints.pick_step_interval` 按
             角速度选取（保证每步至少 1 个 ADC）。
 
         :param current: 已知当前位置；为 ``None`` 时先回读一次。
         :param torque: **使能开关**（``0x10``）；非 ``None`` 时先下发。
-        :param level: 每步位置指令的**出力档位**（0/1/2，见 :meth:`set_position`）。
+        :param level: 每步位置指令的**出力档位**（0/1/2，见 `set_position`）。
         :param wait: 每一步后 ``sleep(interval)``，返回时该次运动已按节奏走完。
         :param max_load: **软件限力阈值**（0..255）。每 ``load_check_every`` 步
             回读一次实测负荷（``0x18``），超过阈值即**停止继续下发**并抛出
-            :class:`LoadLimitExceeded`——这台硬件没有可用的硬件力矩环，这是唯一
+            `LoadLimitExceeded`——这台硬件没有可用的硬件力矩环，这是唯一
             的限力手段。注意每次负荷回读会占用 ~10~30 ms 往返（会略微拖慢节奏）。
         """
         if current is None:
@@ -229,7 +229,7 @@ class Servo:
         即 30° ≈ 102 个 ADC 单位。返回实际下发的 ADC 目标值。
 
         :param speed_dps: 目标**角速度（度/秒）**，用**步进逼近**实现
-            （见 :meth:`move_at_speed`）；需要当前位置（未传 ``current``
+            （见 `move_at_speed`）；需要当前位置（未传 ``current``
             时先回读一次）。与 ``period_ms`` 互斥。
         :param period_ms: 协议文档的 ``SET_PERIOD`` 参数。注意实测舵机固件会
             忽略它，因此它**并不**决定角速度。
@@ -259,7 +259,7 @@ class Servo:
         :param current: 已知的当前位置；为 ``None`` 时自动回读（多一次串口往返）。
             注意**不要**用机械中点代替它，否则基准会偏移。
         :param speed_dps: 目标**角速度（度/秒）**，用步进逼近实现，见
-            :meth:`move_at_speed`。
+            `move_at_speed`。
 
         常规下发顺序：``SET_PERIOD`` → ``SET_POSITION``。
         """
@@ -302,13 +302,13 @@ class Servo:
         * 每步记录 ``{step, target, readback, error, elapsed_s}``
 
         ``speed_dps``（**度/秒**）与 ``period_ms`` 二选一。给出角速度时改用
-        **步进逼近**（见 :meth:`move_at_speed`），两个方向的实际角速度一致。
+        **步进逼近**（见 `move_at_speed`），两个方向的实际角速度一致。
 
-        .. note::
+        !!! note
             往复序列是「先到 high 再到 low」，结束时停在 low。为便于连续多次
             运行（否则中心会逐次漂移），默认在结束时回到起始位置。
 
-        .. warning::
+        !!! warning
             舵机 SET 类命令无应答，因此这里用**回读位置**来确认动作结果；
             回读多占一次串口往返，实测仅约 10~20 ms。
         """
@@ -425,7 +425,7 @@ class Servo:
                 wait: bool = False) -> Optional[Tuple[int, int, int]]:
         """设置 PID（P/I/D 各 0..255），默认**回读确认**。
 
-        .. important::
+        !!! important
             实测（2026-09-25，ID 8，隔离读取重复 3 次）：**保存式写入 ``0x07``
             不可靠**——3 次里只有 1 次改变了回读值；``0x47``（界面「PID 不保存」）
             **3/3 立即生效**（写 ``200/3/30`` 后回读即为该值）。因此本方法：
@@ -433,7 +433,7 @@ class Servo:
             1. 先发 ``0x47``（RAM，立即生效）；
             2. ``save=True``（默认）时补发 ``0x07`` 尝试持久化到闪存；
             3. ``verify=True``（默认）回读确认，不一致就重试 ``retries`` 次，
-               仍不一致抛 :class:`~romanbo.protocol.ProtocolError`。
+               仍不一致抛 `romanbo.protocol.ProtocolError`。
 
             SET 类命令没有 ACK，不校验就可能**静默丢写**（本机实测确实会发生）。
 
@@ -473,11 +473,11 @@ class Servo:
                            wait: bool = False) -> Optional[Tuple[int, int]]:
         """位置限值（界面「最大位置值」）。默认**回读确认**。
 
-        .. warning::
+        !!! warning
             限值是**硬夹紧**（实测：命令越限会被夹到限值处、且不再持续出力），
-            而且**掉电保存**。写错范围会限制关节行程，所以这里和 :meth:`set_pid`
+            而且**掉电保存**。写错范围会限制关节行程，所以这里和 `set_pid`
             一样带校验：写完回读，不一致重试 ``retries`` 次，仍不一致抛
-            :class:`~romanbo.protocol.ProtocolError`——``SET`` 类命令没有 ACK，
+            `romanbo.protocol.ProtocolError`——``SET`` 类命令没有 ACK，
             实测确实会**静默丢写**。
 
         :returns: 回读到的 ``(min, max)``；``verify=False`` 时返回 ``None``。
@@ -507,10 +507,10 @@ class Servo:
     def set_load_limit(self, limit: int, *, wait: bool = False) -> None:
         """设「负荷」上限（``0x0D``，0..255）。
 
-        .. warning::
-            实测写入 8 / 200 后 :meth:`get_load` 无任何变化（同批测试里
-            :meth:`set_margin` 写入立刻可回读，排除读写链路问题），**本机固件
-            是否真的限流未经验证**。要做限力请用软件方案：:meth:`move_at_speed`
+        !!! warning
+            实测写入 8 / 200 后 `get_load` 无任何变化（同批测试里
+            `set_margin` 写入立刻可回读，排除读写链路问题），**本机固件
+            是否真的限流未经验证**。要做限力请用软件方案：`move_at_speed`
             的 ``max_load`` 参数。
         """
         self._send(P.build_set_load_limit(self._id, limit), wait=wait)
@@ -521,11 +521,11 @@ class Servo:
     def set_accelerate(self, value: int, *, wait: bool = False) -> None:
         """设加速度（``0x0E``，0..255）。
 
-        .. warning::
+        !!! warning
             协议文档未定义该方法（码值由应答表顺序推断）。**实测本机固件不实现**：
             0 与 200 下同一段 44° 位移的到位时间与逐点轨迹一致，且 ``0x19``
             读不回来 ⇒ 这个"加速度维度"在本硬件上不可用。要减速请用主机侧的
-            步进逼近（:meth:`move_at_speed` 的 ``interval_ms`` / 更小角速度）。
+            步进逼近（`move_at_speed` 的 ``interval_ms`` / 更小角速度）。
         """
         self._send(P.build_set_accelerate(self._id, value), wait=wait)
 
@@ -542,7 +542,7 @@ class Servo:
 
         协议文档《ROMANBO RS485 舵机通信控制协议》说明该字节带 128 偏置：
         ``偏移量 = 原始值 − 128``（``0x80`` = 偏移 0、``0x81`` = +1）。
-        要按"实际偏移量"写请用 :meth:`set_calibration_offset`。
+        要按"实际偏移量"写请用 `set_calibration_offset`。
         """
         self._send(P.build_set_offset(self._id, offset), wait=wait)
 
@@ -584,7 +584,7 @@ class Servo:
         self._send(P.build_reboot(self._id), wait=wait)
 
     def set_id(self, new_id: int, *, wait: bool = False) -> None:
-        """改本舵机 ID（帧地址用旧 ID）。改完后请使用新 ID 建立 :class:`Servo`。"""
+        """改本舵机 ID（帧地址用旧 ID）。改完后请使用新 ID 建立 `Servo`。"""
         self._send(P.build_set_id(self._id, new_id), wait=wait)
 
     # -- LED ---------------------------------------------------------------- #
@@ -603,7 +603,7 @@ class Servo:
     def get_position(self, *, timeout: Optional[float] = None) -> int:
         """读取当前位置（ADC 0..1023）。
 
-        实测回包（ID=10，2026-09-25）::
+        实测回包（ID=10，2026-09-25）：
 
             请求  FF FF 0A 06 14 DE
             应答  FF FF 0A 09 94 00 01 FE 5C   → 数据段 00 01 FE
@@ -637,13 +637,13 @@ class Servo:
                    timeout: Optional[float] = None) -> int:
         """读运动周期（``0x0F``，本机固件无应答）。
 
-        .. danger::
-            **默认拒发（:class:`~romanbo.protocol.ProtocolError`）。**
+        !!! danger
+            **默认拒发（`romanbo.protocol.ProtocolError`）。**
             实测（2026-09-26，ID 8）无数据段的 ``0x0F`` 会被固件当成
             ``SetPositionLimit`` 执行：它拿解析缓冲里的残留 4 字节写入位置限值
             （``(1,1023)`` → ``(113,257)``，重复发送结果一致），而且本身没有应答。
             只有在你**明确接受限值被破坏、并已记下原值可随时用
-            :meth:`set_position_limit` 复原**时才传 ``unsafe=True``。
+            `set_position_limit` 复原**时才传 ``unsafe=True``。
 
         :param unsafe: 显式确认"我知道这会改写位置限值"。
         """
@@ -736,11 +736,11 @@ class Servo:
     def ping(self, *, timeout: float = P.SCAN_PROBE_TIMEOUT) -> bool:
         """是否在线（``Status`` 有回包即在线）。
 
-        .. warning::
+        !!! warning
             应答本身只需 10~20 ms，但**若上一条帧是发给别人的（无设备 ID），
             本帧约 0.4 s 内会被忽略**（总线静默期）。扫描时若不复位这一状态，
             会出现"只扫到第一个舵机"的假象——请用
-            :meth:`~romanbo.robot.RomanboRobot.scan`（它已处理该延时）。
+            `romanbo.robot.RomanboRobot.scan`（它已处理该延时）。
         """
         try:
             # retries=0：扫描时每个不存在的 ID 只等一次，否则 32 个 ID 会慢 3 倍
@@ -765,7 +765,7 @@ class Servo:
         cfg.pid = safe(self.get_pid, timeout=timeout)
         # 注意：不在这里发 0x0F（读运动周期）。它没有应答，且与
         # SET_POSITION_LIMIT 同码：实测无数据帧也会用缓冲残值改写限值，
-        # 所以 :meth:`get_period` 默认拒发，只有 unsafe=True 才发。
+        # 所以 `get_period` 默认拒发，只有 unsafe=True 才发。
         cfg.position_limit = safe(self.get_position_limit, timeout=timeout)
         cfg.load = safe(self.get_load, timeout=timeout)
         cfg.acceleration = safe(self.get_accelerate, timeout=timeout)
@@ -782,4 +782,4 @@ class Servo:
         return J.adc_to_angle(self.get_position(), ratio=ratio, center=center)
 
 
-__all__ = ["Servo", "ServoConfig"]
+__all__ = ["Servo", "ServoConfig", "LoadLimitExceeded"]

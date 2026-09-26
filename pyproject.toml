@@ -42,6 +42,7 @@ Changelog = "https://github.com/LQX-Code-SH/Romanbo-Python-SDK/blob/main/CHANGEL
 
 [project.optional-dependencies]
 dev = ["build>=1.0", "ruff>=0.4", "mypy>=1.8"]
+docs = ["mkdocs>=1.6", "mkdocs-material>=9.5", "mkdocstrings[python]>=0.25"]
 
 [project.scripts]
 romanbo = "romanbo.cli:run"

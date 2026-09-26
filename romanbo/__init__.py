@@ -2,15 +2,15 @@
 
 面向 ROMANBO 舵机型号的 RS485 总线协议实现与功能封装：
 
-* :mod:`romanbo.protocol`  —— 字节层：帧格式、命令码、校验、解析
-* :mod:`romanbo.transport` —— 串口 / 离线模拟器
-* :mod:`romanbo.servo`     —— 单个舵机 API
-* :mod:`romanbo.robot`     —— 整机 API（握手、扫描、同步动作、示教、播放）
-* :mod:`romanbo.rsc`       —— ``.rsc`` 工程（动作数据）解析
-* :mod:`romanbo.joints`    —— 机型/关节与 ADC↔角度换算
-* :mod:`romanbo.golden`    —— 基准报文自检
+* `romanbo.protocol`  —— 字节层：帧格式、命令码、校验、解析
+* `romanbo.transport` —— 串口 / 离线模拟器
+* `romanbo.servo`     —— 单个舵机 API
+* `romanbo.robot`     —— 整机 API（握手、扫描、同步动作、示教、播放）
+* `romanbo.rsc`       —— ``.rsc`` 工程（动作数据）解析
+* `romanbo.joints`    —— 机型/关节与 ADC↔角度换算
+* `romanbo.golden`    —— 基准报文自检
 
-最小用法::
+最小用法：
 
     from romanbo import RomanboRobot
 

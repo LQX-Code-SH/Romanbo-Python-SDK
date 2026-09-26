@@ -6,8 +6,20 @@
 
 ## [Unreleased]
 
+### 新增
+- **文档站**：`mkdocs.yml`（Material 主题）+ `docs/`，其中 **API 参考由 docstring 自动生成**
+  （mkdocstrings），`mkdocs build --strict` 已在 CI 中作为门禁
+- `docs/evidence/`：真机探针日志归档为可独立复核的原始证据，并附证据说明
+- `.github/workflows/docs.yml`：PR 校验 + 主分支自动部署到 GitHub Pages
+
+### 变更
+- **docstring 规范化**：RST 指令（`.. note::` / `.. warning::` / `.. math::`）改为 Markdown 等价写法，
+  Sphinx 角色（`:class:` / `:meth:` 等 61 处）改为行内代码，使自动生成的 API 参考可读
+- 文档站锚点改用 Unicode slugify，与 GitHub 的锚点规则保持一致（中文标题可正常跳转）
+- `docs/SERVO_SPEC.md` §7 明确与自动生成 API 参考的主从关系（以 docstring 为准）
+- `Servo.__all__` 补上 `LoadLimitExceeded`
+
 ### 计划中
-- `docs/` 文档站（README 瘦身、协议规格与 API 参考自动生成）
 - 只读探测类调用的默认重试策略优化（`capture()`）
 
 ## [1.0.0] - 2026-09-26

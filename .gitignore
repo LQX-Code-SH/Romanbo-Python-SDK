@@ -8,6 +8,7 @@ __pycache__/
 # ---------------------------------------------------------------- 构建产物
 build/
 dist/
+site/
 *.egg-info/
 .eggs/
 pip-wheel-metadata/

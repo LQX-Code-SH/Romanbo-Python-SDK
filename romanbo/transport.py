@@ -48,7 +48,7 @@ class Transport(ABC):
 class SerialTransport(Transport):
     """基于 pyserial 的真实串口（跨平台：Windows ``COM3`` / Linux ``/dev/ttyUSB0``）。
 
-    .. note::
+    !!! note
         ``exclusive=True`` 在 **POSIX 上启用排他打开**（``TIOCEXCL``）——Linux 的串口
         默认是**共享**的，两个进程能同时打开同一个 ``/dev/ttyUSB0`` 并互相打乱收发；
         Windows 本身独占，pyserial 会忽略该参数，所以默认开启即可两边都安全。
@@ -109,9 +109,9 @@ class SerialTransport(Transport):
         return bool(self._ser is not None and getattr(self._ser, "is_open", False))
 
     def write(self, frame: bytes) -> None:
-        """写出一帧，并保证与上一帧之间至少间隔 :data:`~romanbo.protocol.MIN_FRAME_GAP`。
+        """写出一帧，并保证与上一帧之间至少间隔 `romanbo.protocol.MIN_FRAME_GAP`。
 
-        .. important::
+        !!! important
             实测（2026-09-26，ID 8/10）：**两帧之间没有间隔时，后发的那一帧会被
             舵机静默丢弃**（交换 ID 顺序后被丢的永远是第二帧，与 ID 无关）；
             间隔 >= 2 ms 时两帧均正常。多关节动作是逐关节连发，若不在写口兜底，

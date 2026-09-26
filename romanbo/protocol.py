@@ -1,23 +1,22 @@
 """ROMANBO 舵机总线协议（字节层实现）。
 
 本模块只负责「字节层」：常量、帧构造、校验、帧解析。
-高层语义见 :mod:`romanbo.servo`（单舵机）与 :mod:`romanbo.robot`（整机）。
+高层语义见 `romanbo.servo`（单舵机）与 `romanbo.robot`（整机）。
 
 帧格式
 ------
-::
 
     FF FF | ID | LEN | CMD | DATA... | CHK
 
 * ``ID``  : 0 = 控制器板，1..32 = 舵机，224..253 = 传感器，254 = 广播
 * ``LEN`` : 整帧字节数（含帧头与校验字节），由发送方决定数据段长度
-* ``CMD`` : 命令码，见 :class:`ServoCmd` / :class:`CtrlCmd`
+* ``CMD`` : 命令码，见 `ServoCmd` / `CtrlCmd`
 * ``CHK`` : ``(0x100 - (sum(除末字节外的所有字节) & 0xFF)) & 0xFF``
   等价说法：**整帧所有字节求和 ≡ 0 (mod 256)**
 
 基准报文
 --------
-:mod:`tests.test_protocol` 中的断言字节是协议基准报文，用于逐字节回归验证本实现。
+`tests.test_protocol` 中的断言字节是协议基准报文，用于逐字节回归验证本实现。
 """
 
 from __future__ import annotations
@@ -75,7 +74,7 @@ SCAN_QUARANTINE = BUS_QUARANTINE
 #:
 #: 多关节下发是**逐关节连发**（``Robot.move`` 的步进逼近、``mode="position"``
 #: 的 ``SET_PERIOD``+``SET_POSITION``、``Robot.play``），不兜底就会"只有第一个
-#: 关节生效"。因此由 :class:`romanbo.transport.SerialTransport` 在写口强制本间隔。
+#: 关节生效"。因此由 `romanbo.transport.SerialTransport` 在写口强制本间隔。
 MIN_FRAME_GAP = 0.002
 
 BAUDRATE_DEFAULT = 115200
@@ -95,7 +94,7 @@ class ServoCmd:
     SET_PID = 0x07
     #: 「PID 不保存」（界面勾选项）。**实测这条才可靠**：``0x47`` 写后立即回读
     #: 即为新值（3/3）；而 ``0x07`` 三次里只有一次生效（见
-    #: :meth:`romanbo.servo.Servo.set_pid`）。
+    #: `romanbo.servo.Servo.set_pid`）。
     SET_PID_NOSAVE = 0x47
     SET_TEMP = 0x08
     SET_POSITION = 0x09
@@ -407,7 +406,6 @@ def build_set_position(id_: int, position: int, torque: int = LEVEL_MIDDLE,
                        relative: int = 0, *, level: Optional[int] = None) -> bytes:
     """位置指令（``0x09``，LEN=8）。
 
-    ::
 
         v    = (ledkind << 13) | (torque << 11) | (relative << 10) | position
         d[5] = v >> 8            # 含档位(bit3=bit11, bit4=bit12)、relative(bit2)、位置高位
@@ -415,8 +413,8 @@ def build_set_position(id_: int, position: int, torque: int = LEVEL_MIDDLE,
 
     :param position: 0..1023（常规范围）；``d[5]`` 只留 3 位给位置高位，
         ``>= 2048`` 会污染档位/relative 位（目标会被静默改成别的值）。
-    :param torque: **出力档位**，取值 :data:`LEVEL_HIGH` / :data:`LEVEL_MIDDLE` /
-        :data:`LEVEL_LOW` / :data:`LEVEL_WHEEL`（0/1/2/3，见上表）。
+    :param torque: **出力档位**，取值 `LEVEL_HIGH` / `LEVEL_MIDDLE` /
+        `LEVEL_LOW` / `LEVEL_WHEEL`（0/1/2/3，见上表）。
         默认 1（= M，兼容历史默认值）；想要最大出力请传 0。
         **不是使能**——使能用 ``0x10``。
     :param level: :paramref:`torque` 的别名（更贴近语义），给出时优先。
@@ -433,7 +431,6 @@ def build_set_wheel(id_: int, speed: int, *, torque: int = ON, relative: int = 0
                     free: int = 0, direction: int = 0) -> bytes:
     """轮子模式（LEN=8，与位置指令同码）。
 
-    ::
 
         d[5] = (torque << 3) + (relative << 2) + (free << 1) + direction
         d[6] = speed
@@ -447,7 +444,7 @@ def build_set_next_position(id_: int, position: int, *, torque: int = ON,
                             ledkind: int = 0, angle: int = 0) -> bytes:
     """预置下一目标（LEN=8），可用 ``SET_SYNC`` 触发同步执行。
 
-    打包规则（依据协议文档）::
+    打包规则（依据协议文档）：
 
         bit = 1 if position < 512 else 0
         if torque < 3:
@@ -488,7 +485,7 @@ def build_set_led(id_: int, value: int) -> bytes:
 
 
 def build_set_led_color(id_: int, red: bool, green: bool, blue: bool) -> bytes:
-    """LED 三色（LEN=7）::
+    """LED 三色（LEN=7）：
 
         v = (8 if red else 0) + (4 if green else 0) + (2 if blue else 0)
         d[5] = v << 4
@@ -504,7 +501,7 @@ def build_set_margin(id_: int, margin: int) -> bytes:
 def build_set_load_limit(id_: int, limit: int) -> bytes:
     """负荷（电流）上限，``0x0D``，0..255。
 
-    .. warning::
+    !!! warning
         实测：写入 8 / 200 后**无法从 ``GET_LOAD`` 观察到任何变化**（同批测试中
         ``SET_MARGIN 0x0C`` 写入立刻可回读，排除读写链路问题），因此本机固件
         是否真的限流**未经验证**。协议文档把这一项标为「负荷」。
@@ -519,8 +516,8 @@ build_set_current_limit = build_set_load_limit
 def build_set_accelerate(id_: int, value: int) -> bytes:
     """加速度设置（``0x0E``，0..255）。
 
-    .. warning::
-        码值由应答表顺序推断（见 :attr:`ServoCmd.SET_ACCELERATE`），协议文档未定义。
+    !!! warning
+        码值由应答表顺序推断（见 `ServoCmd.SET_ACCELERATE`），协议文档未定义。
         **实测（2026-09-25，ID 8，交错 A/B 各 2 次）该固件未实现此参数**：
         ``value`` 为 0 与 200 时，同一段 44° 位移的到位时间（0.255 / 0.257 s）与
         逐点轨迹完全一致，峰值负荷差异在运行间噪声内；且 ``0x19`` 读不回来。
@@ -610,7 +607,7 @@ def build_get_position_limit(id_: int) -> bytes:
 def build_get_motion_period(id_: int) -> bytes:
     """读取运动周期（与 ``SET_POSITION_LIMIT`` 同码 ``0x0F``）。
 
-    .. danger::
+    !!! danger
         **不要发送这条帧。** 实测（2026-09-26，ID 8）它无应答，而且**不带数据的
         ``0x0F`` 会被固件当成 ``SetPositionLimit`` 执行**：固件用解析缓冲里的残留
         4 字节当 min/max 写入限值（实测 `(1,1023)` → `(113,257)`，重复发送结果一致）。
@@ -730,7 +727,7 @@ class FrameParser:
     def feed(self, chunk: bytes) -> List[Response]:
         """喂入新收到的字节，返回本次能解析出的完整帧列表。
 
-        由于 ``LEN`` 在请求/应答两种语义下含义不同（见 :func:`verify`），
+        由于 ``LEN`` 在请求/应答两种语义下含义不同（见 `verify`），
         这里对每个帧头依次尝试「数据长度+6」与「整帧长度」两种截取方式，
         以校验和通过的那个为准。
         """

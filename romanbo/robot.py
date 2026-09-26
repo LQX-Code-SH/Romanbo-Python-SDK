@@ -49,7 +49,7 @@ class RomanboRobot:
     """一条总线上的全部设备（控制器 + 舵机）。
 
     :param port: 串口名（如 ``COM3``）；使用 ``transport`` 时可为 ``None``
-    :param transport: 自定义传输层（例如 :class:`~romanbo.transport.MockTransport`）
+    :param transport: 自定义传输层（例如 `romanbo.transport.MockTransport`）
     """
 
     def __init__(self, port: Optional[str] = None, *,
@@ -200,7 +200,7 @@ class RomanboRobot:
                      expect_cmd: Optional[int] = None,
                      retries: Optional[int] = None,
                      raise_on_error: bool = True) -> Optional[P.Response]:
-        """统一的「发（可选等）」入口，供 :class:`~romanbo.servo.Servo` 使用。"""
+        """统一的「发（可选等）」入口，供 `romanbo.servo.Servo` 使用。"""
         if wait:
             return self.request(frame, expect_id=expect_id, expect_cmd=expect_cmd,
                                 timeout=timeout, retries=retries,
@@ -283,10 +283,10 @@ class RomanboRobot:
         传入越界范围时会被夹紧到 1..32（这一段才是舵机 ID 空间），
         不会抛异常。
 
-        .. important::
+        !!! important
             **必须处理总线静默期**。实测：舵机本身应答只要 10~20 ms，但一条
             **寻址到无设备 ID** 的帧之后，舵机会忽略随后约 ``0.4 s`` 内的帧
-            （见 :data:`romanbo.protocol.BUS_QUARANTINE`）。因此本方法在**探测失败
+            （见 `romanbo.protocol.BUS_QUARANTINE`）。因此本方法在**探测失败
             后**先等 ``quarantine`` 秒再探测下一个 ID，否则会出现"只扫到第一个
             舵机、后面全部漏掉"的假象——扫描时每个 ID 之间
             ``Thread.Sleep(600)`` 正是为此。
@@ -333,7 +333,7 @@ class RomanboRobot:
         """多关节运动。速度用 ``speed_dps``（实际角速度）或 ``period_ms`` 表达。
 
         ``speed_dps`` —— **实际角速度（度/秒）**
-            用**步进逼近**实现（见 :meth:`Servo.move_at_speed`：实测舵机固件忽略
+            用**步进逼近**实现（见 `Servo.move_at_speed`：实测舵机固件忽略
             ``SET_PERIOD``，速度只能靠按节拍下发中间目标来控制）。需要 ``start``
             给出各关节当前 ADC 才能插值；未出现在 ``start`` 里的关节直接下发目标。
 
@@ -343,7 +343,7 @@ class RomanboRobot:
             （``SET_NEXT_POSITION`` + ``SET_SYNC``），**实测该固件不响应**。
             注意 ``SET_PERIOD`` 本身被固件忽略，它并不决定实际速度。
 
-        .. note::
+        !!! note
             同步触发的具体 ID 在协议文档中未明确；这里默认用**广播 ID 254**，
             如需逐 ID 触发请传 ``sync_id=None``。
         """
@@ -396,7 +396,7 @@ class RomanboRobot:
         （``start`` 中缺失）直接下发目标，不做插值。
 
         ``max_load`` 为**软件限力**阈值：每 ``load_check_every`` 拍**轮转**抽检
-        一个关节的实测负荷（``0x18``），超过阈值即抛出 :class:`LoadLimitExceeded`
+        一个关节的实测负荷（``0x18``），超过阈值即抛出 `LoadLimitExceeded`
         并停止下发（各关节停在最后一个目标位置）。轮转是为了让总线上每拍最多
         只多一次查询，不破坏节拍。
         """
@@ -478,16 +478,16 @@ class RomanboRobot:
 
         ``speed_dps`` —— **实际角速度（度/秒）**
             忽略文件里的 ``Period``：每一段（上一帧 → 本帧）都按该角速度用
-            **步进逼近**走完（见 :meth:`move`），因此关节真的以该角速度运动。
+            **步进逼近**走完（见 `move`），因此关节真的以该角速度运动。
             需要参照位置：``start_positions`` 给出起始时各关节的 ADC（例如播放前
-            :meth:`capture` 的结果）；缺失的关节在第一段会直接跳到该帧目标。
+            `capture` 的结果）；缺失的关节在第一段会直接跳到该帧目标。
 
         ``speed_scale`` —— 周期倍率，仅在未给 ``speed_dps`` 时生效。
             **> 1 更慢**（周期变长），``1.0`` 为文件原始速度。注意舵机固件会忽略
             ``SET_PERIOD``，所以这个倍率只改变**帧间节奏**，不改变单帧内的速度。
 
         ``max_load`` —— **软件限力**阈值，仅在给了 ``speed_dps`` 时可用；运动中
-            轮转抽检各关节实测负荷，超限抛 :class:`~romanbo.servo.LoadLimitExceeded`。
+            轮转抽检各关节实测负荷，超限抛 `romanbo.servo.LoadLimitExceeded`。
 
         ``ids`` —— **只驱动这些舵机**（例如总线上只有 ID 8/10 时传 ``{8, 10}``）。
             ``.rsc`` 是整机 17 通道的绝对目标，直接照发会寻址到 15 个**不存在的 ID**，
@@ -495,7 +495,7 @@ class RomanboRobot:
             （总线静默期），节奏会被彻底打乱；因此只驱动在线的关节时务必给出
             ``ids``。``None``（默认）表示不做过滤、按文件全量下发。
 
-        :param mode: 见 :meth:`move`（默认 ``"position"``，实测可用）。
+        :param mode: 见 `move`（默认 ``"position"``，实测可用）。
         """
         offset = self.id_offset if id_offset is None else id_offset
         frame_list = list(frames)
@@ -565,7 +565,7 @@ class RomanboRobot:
                  sleep: Callable[[float], None] = time.sleep,
                  on_frame: Optional[Callable] = None,
                  stop_event: Optional[threading.Event] = None) -> int:
-        """加载 ``.rsc`` 并播放其中的动作帧（各参数含义见 :meth:`play`）。"""
+        """加载 ``.rsc`` 并播放其中的动作帧（各参数含义见 `play`）。"""
         project = RscProject.load(path)
         return self.play(project.frames(scene=scene), loop=loop,
                          speed_dps=speed_dps, speed_scale=speed_scale,

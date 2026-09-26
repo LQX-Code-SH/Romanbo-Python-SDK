@@ -1,13 +1,14 @@
 # 文档索引
 
 本目录存放 ROMANBO Python SDK 的参考文档。项目级说明（安装、上手、命令行速查、Python API、
-真机实测结论、安全与已知限制）见仓库根目录的 [`README.md`](../README.md)。
+真机实测结论、安全与已知限制）见
+[`README.md`](https://github.com/LQX-Code-SH/Romanbo-Python-SDK#readme)。
 
 | 文档 | 内容 | 适用读者 |
 |---|---|---|
 | [`SERVO_SPEC.md`](SERVO_SPEC.md) | 字节级逐命令协议规格：帧格式、时序与总线静默期、功能矩阵、命令详解、数据语义、Python 接口参考、CLI ↔ 协议对照、无依赖参考实现、未支持/未验证清单 | 自行实现协议、或排查通信问题的人 |
 | [`SERVO_TEST_PLAN.md`](SERVO_TEST_PLAN.md) | 舵机控制测试方案：L0~L7 分级用例、判定门限、性能与精度基准、异常与鲁棒性、结果记录模板、缺陷专项回归 | 做验收测试、硬件联调、回归验证的人 |
-| [`evidence/`](evidence) | 真机联调探针日志（原始收发字节），作为部分实测结论的**原始证据** | 想核对实测结论的人 |
+| [`evidence/`](evidence/README.md) | 真机联调探针日志（原始收发字节），作为部分实测结论的**原始证据** | 想核对实测结论的人 |
 
 ## 证据日志
 

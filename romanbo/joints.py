@@ -97,15 +97,15 @@ def period_for_speed(delta_adc: float, dps: float, *,
 
     ``SET_PERIOD`` 的原语义是「走完这段距离所需的时间」，因此
 
-    .. math::
+    换算公式：
 
-        \\text{period\\_ms} = \\frac{|\\Delta_{adc}| \\cdot ratio}{dps} \\times 1000
+        period_ms = |Δ_adc| × ratio / dps × 1000
 
     :param delta_adc: 角位移（ADC 单位；正负号无关，取绝对值）
     :param dps: 目标角速度，**度/秒**，必须 > 0
-    :param ratio: ADC→角度比例，默认常量 :data:`RATIO_MAIN`
-    :param min_ms/max_ms: 结果夹紧区间，默认 :data:`MIN_PERIOD_MS` /
-        :data:`MAX_PERIOD_MS`
+    :param ratio: ADC→角度比例，默认常量 `RATIO_MAIN`
+    :param min_ms: 结果夹紧下限（ms），默认 `MIN_PERIOD_MS`
+    :param max_ms: 结果夹紧上限（ms），默认 `MAX_PERIOD_MS`
     """
     if dps <= 0:
         raise ValueError(f"角速度必须 > 0 度/秒，收到 {dps!r}")
@@ -115,7 +115,7 @@ def period_for_speed(delta_adc: float, dps: float, *,
 
 def speed_of(delta_adc: float, period_ms: float, *,
              ratio: float = RATIO_MAIN) -> float:
-    """由角位移与周期反算**实际角速度**（度/秒），:func:`period_for_speed` 的逆。"""
+    """由角位移与周期反算**实际角速度**（度/秒），`period_for_speed` 的逆。"""
     period = max(1.0, float(period_ms))
     return abs(float(delta_adc)) * ratio * 1000.0 / period
 
@@ -127,9 +127,9 @@ def frame_period_for_speed(previous: Mapping[int, int], targets: Mapping[int, in
                            fallback_ms: Optional[int] = None) -> int:
     """多关节帧的周期：取各关节中**最大**角位移反算，保证没有关节超速。
 
-    .. note::
+    !!! note
         这是「周期 = 走完时间」假设下的换算。**实测舵机固件会忽略
-        ``SET_PERIOD(0x0B)``**（见 :func:`plan_move`），因此真正要控制角速度
+        ``SET_PERIOD(0x0B)``**（见 `plan_move`），因此真正要控制角速度
         应当使用步进逼近，本函数仅用于换算/报告。
 
     :param previous: 上一帧（或起始实读）的 ``{舵机ID: ADC}``；缺失的关节会被
@@ -172,7 +172,7 @@ def plan_move(start_adc: int, target_adc: int, dps: float, *,
               interval_ms: Optional[int] = None) -> List[Tuple[float, int]]:
     """把 ``start_adc → target_adc`` 拆成 ``[(步长秒, 中间ADC), ...]``。
 
-    .. important::
+    !!! important
         **为什么不是靠 ``SET_PERIOD``**：实测该舵机固件忽略运动周期
         （周期 60 / 3000 / 8000 ms 下，44° 位移都在约 0.24 s 内以最大速度走完，
         约 150~180 °/s），因此「角速度」只能靠**按固定节奏下发中间目标**实现：

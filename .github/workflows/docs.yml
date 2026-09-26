@@ -1,0 +1,77 @@
+name: Docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "mkdocs.yml"
+      - "romanbo/**"
+      - ".github/workflows/docs.yml"
+  pull_request:
+    paths:
+      - "docs/**"
+      - "mkdocs.yml"
+      - "romanbo/**"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同一时间只允许一次 Pages 部署；构建可取消，部署不可
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: 构建文档站
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[docs]" ruff
+
+      - name: 构建（strict：任何告警即失败）
+        run: python -m mkdocs build --strict
+
+      - name: 产物自检（API 参考必须已生成）
+        run: |
+          python -c "
+          import pathlib
+          api = pathlib.Path('site/api/index.html')
+          assert api.is_file(), 'API 参考页未生成'
+          html = api.read_text(encoding='utf-8')
+          assert 'doc-heading' in html, 'API 页未渲染出条目'
+          for bad in (':func:', ':class:', ':meth:', ':data:'):
+              assert bad not in html, f'API 页残留 RST 角色 {bad}'
+          print('文档站产物校验通过，api/index.html =', api.stat().st_size, '字节')
+          "
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    name: 部署到 GitHub Pages
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

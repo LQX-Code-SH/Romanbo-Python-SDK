@@ -1,6 +1,6 @@
 """命令行接口：``python -m romanbo <命令>``。
 
-示例::
+示例：
 
     python -m romanbo --port COM3 handshake
     python -m romanbo --port COM3 scan

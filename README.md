@@ -5,6 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Typing: py.typed](https://img.shields.io/badge/typing-py.typed-blue)](https://peps.python.org/pep-0561/)
 [![Lint: ruff](https://img.shields.io/badge/lint-ruff-000000.svg)](https://github.com/astral-sh/ruff)
+[![Docs](https://img.shields.io/badge/docs-online-2ea44f)](https://lqx-code-sh.github.io/Romanbo-Python-SDK/)
 
 面向 **ROMANBO** 舵机型号的 RS485 总线控制 SDK，完整实现舵机与整机控制协议，
 并在**真机**上逐条验证过（验证环境：两个 MOS 系列舵机串联，ID 8 / ID 10，COM3，2026-09-25）。
@@ -527,6 +528,10 @@ python -m unittest discover -s tests -t .      # 129 项单元测试（全部通
 python -m romanbo selftest                     # 60 条基准报文（逐字节比对）
 python -m romanbo --mock scan                  # 离线模拟器冒烟
 python examples/04_offline_frames.py           # 打印每条指令的真实报文
+
+python -m pip install -e ".[docs]"             # 文档站依赖
+python -m mkdocs build --strict                # 构建文档站（告警即失败）
+python -m mkdocs serve                         # 本地预览 http://127.0.0.1:8000
 ```
 
 | 测试文件 | 覆盖 |
@@ -585,9 +590,13 @@ python examples/04_offline_frames.py           # 打印每条指令的真实报�
 ├── requirements.txt             运行期依赖（pyserial）
 ├── pyproject.toml               打包元数据 + ruff / mypy 配置
 ├── .editorconfig / .gitignore   编辑器与忽略规则
-├── .github/workflows/ci.yml     CI：Python 3.8~3.13 矩阵测试 + 发行包构建
+├── mkdocs.yml                   文档站配置（Material 主题 + mkdocstrings）
+├── .github/workflows/
+│   ├── ci.yml                   CI：Python 3.8~3.13 矩阵测试 + 发行包构建
+│   └── docs.yml                 文档站构建与 GitHub Pages 部署
 ├── docs/
-│   ├── README.md                文档索引（本目录导览）
+│   ├── README.md                文档索引（同时是文档站首页）
+│   ├── api.md                   API 参考（由 docstring 自动生成）
 │   ├── SERVO_SPEC.md            字节级逐命令协议规格
 │   ├── SERVO_TEST_PLAN.md       分级测试方案（L0~L7 / 判定门限 / 缺陷回归）
 │   └── evidence/                真机联调探针日志（实测结论的原始证据）
@@ -618,7 +627,8 @@ python examples/04_offline_frames.py           # 打印每条指令的真实报�
 - 协议字段、命令码与常量以 [`docs/SERVO_SPEC.md`](docs/SERVO_SPEC.md) 为准；已真机验证的结论均标注实测环境与日期。
 - LED 颜色位映射与零点偏差 ±128 偏置语义依据《ROMANBO RS485 舵机通信控制协议》；
   其示例报文已与本实现逐字节交叉校验（发现 3 处校验和笔误，见 [`docs/SERVO_SPEC.md`](docs/SERVO_SPEC.md) §11）。
-- 文档导览见 [`docs/README.md`](docs/README.md)（协议规格 / 测试方案 / 证据日志）。
+- 文档导览见 [`docs/README.md`](docs/README.md)；在线文档站：<https://lqx-code-sh.github.io/Romanbo-Python-SDK/>
+  （由 `docs/` 构建，其中 **API 参考从 docstring 自动生成**，不会与代码脱节）。
 - 使用真机前请自行确认设备安全。
 - 许可证：MIT（见 [`LICENSE`](LICENSE)）；版本变更见 [`CHANGELOG.md`](CHANGELOG.md)。
 - 版本：`romanbo 1.0.0`（见 `romanbo/__init__.py`）。

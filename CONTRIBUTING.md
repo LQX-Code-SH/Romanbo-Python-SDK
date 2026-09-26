@@ -31,6 +31,25 @@ python -m romanbo --mock scan                # 离线冒烟
 - 新增整机逻辑 → 用 `MockTransport` 覆盖，**不要在单元测试里访问真实串口**；
 - 涉及真机的结论 → 写清「协议文档定义 / 真机实测 / 未验证」，并附实测环境与日期。
 
+## 文档
+
+文档站用 **MkDocs + Material + mkdocstrings** 构建，源文件在 `docs/`：
+
+```bash
+python -m pip install -e ".[docs]" ruff
+python -m mkdocs serve            # 本地预览 http://127.0.0.1:8000
+python -m mkdocs build --strict   # CI 用；任何告警都会导致失败
+```
+
+约定：
+
+- **`docs/api.md` 的 API 参考由 docstring 自动生成**，不要在文档里重复维护函数签名；
+- 改公开接口时，把「语义、限制、实测结论」写进 docstring；
+- docstring 用 **Sphinx 风格**（`:param x:`、`:returns:`），正文用 Markdown；
+  需要强调风险时用 `!!! warning` 这类 Markdown admonition，**不要写 `.. warning::`**（RST 写法不会渲染）；
+- 交叉引用写成行内代码（`` `romanbo.servo.Servo` ``），不要用 `:class:` 之类的 RST 角色；
+- 站内锚点由 pymdownx 的 Unicode slugify 生成，与 GitHub 保持一致，中文标题可正常跳转。
+
 ## 危险的改动
 
 以下内容会改动真机状态或协议语义，请单独开 issue 讨论后再提 PR：

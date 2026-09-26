@@ -1,0 +1,87 @@
+site_name: ROMANBO Python SDK
+site_description: ROMANBO 舵机 / 整机 RS485 控制库（Python SDK）
+site_url: https://lqx-code-sh.github.io/Romanbo-Python-SDK/
+repo_url: https://github.com/LQX-Code-SH/Romanbo-Python-SDK
+repo_name: LQX-Code-SH/Romanbo-Python-SDK
+edit_uri: edit/main/docs/
+copyright: MIT License · LQX-Code-SH
+
+docs_dir: docs
+site_dir: site
+
+theme:
+  name: material
+  language: zh
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - content.action.edit
+    - search.highlight
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: 跟随系统
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/weather-night
+        name: 深色模式
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/weather-sunny
+        name: 浅色模式
+
+nav:
+  - 首页: README.md
+  - 项目 README: https://github.com/LQX-Code-SH/Romanbo-Python-SDK#readme
+  - 协议规格: SERVO_SPEC.md
+  - 测试方案: SERVO_TEST_PLAN.md
+  - API 参考: api.md
+  - 证据日志: evidence/README.md
+
+plugins:
+  - search:
+      lang: zh
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [.]
+          options:
+            docstring_style: sphinx
+            show_source: true
+            show_root_heading: true
+            show_root_full_path: false
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            separate_signature: true
+            show_signature_annotations: true
+            merge_init_into_class: true
+            members_order: source
+            group_by_category: true
+            show_labels: true
+            filters: ["!^_"]
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      toc_depth: 4
+      # 默认 slugify 会丢弃中文字符（“1. 目的与范围” → “1”），与 GitHub 的锚点
+      # 不一致；改用 pymdownx 的 Unicode 感知版本，使站点与 GitHub 锚点一致。
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true

@@ -2,7 +2,7 @@
 
 格式要点
 --------
-``.rsc`` 是 JSON 文本，但**用重复键表示数组**，例如::
+``.rsc`` 是 JSON 文本，但**用重复键表示数组**，例如：
 
     "MotorValue": { "ADC": 512, "ADC": 563, ... }   // 17 个关节值
 
@@ -81,7 +81,7 @@ def _explode_repeated(item: Dict[str, Any]) -> List[Dict[str, Any]]:
 
     ``.rsc`` 里一个 ``"Motion": [ { ... } ]`` 块可以包含**多帧**：所有帧的
     ``SceneNumber``/``MotionNumber``/``Period``/``MotorValue``/``LEDValue``
-    都作为重复键塞在同一个对象里，如::
+    都作为重复键塞在同一个对象里，如：
 
         {"SceneNumber": [0,0,0], "MotionNumber": [0,1,2], "Period": [500,500,500],
          "MotorValue": [{"ADC": [...]}, {"ADC": [...]}, {"ADC": [...]}]}
@@ -359,7 +359,7 @@ def dumps_project(frames: Iterable[Mapping[str, Any]], *,
     :param home: ``Header.MotorState`` 的初始 ADC（长度 ``motor_count``），默认全 512。
     :param scene_prefix: 场景名前缀，生成 ``<prefix>_1``、``<prefix>_2`` …
 
-    .. important::
+    !!! important
         ``MotorValue`` / ``LEDValue`` 在文件里是**重复同名键的对象**（不是一个数组），
         标准 ``json.dumps`` 无法生成，因此这里手工拼接文本；缩进用 Tab、字段顺序与
         与既有 ``.rsc`` 文件一致（``Setup``(PID) 一并省略，只写 ``Remocon`` 空表）。
@@ -443,7 +443,7 @@ def dumps_project(frames: Iterable[Mapping[str, Any]], *,
 
 def write_project(path: str | Path, frames: Iterable[Mapping[str, Any]],
                   **kwargs: Any) -> Path:
-    """把 :func:`dumps_project` 的结果写入 ``path``（``ProjectName`` 取文件名）。"""
+    """把 `dumps_project` 的结果写入 ``path``（``ProjectName`` 取文件名）。"""
     target = Path(path)
     kwargs.setdefault("project_name", target.name)
     target.write_text(dumps_project(frames, **kwargs), encoding="utf-8")

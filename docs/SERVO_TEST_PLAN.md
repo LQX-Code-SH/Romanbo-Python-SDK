@@ -50,7 +50,7 @@
 
 ### 1.3 参考文档
 
-- [`README.md`](../README.md)（安装、上手、命令行、API、安全与已知限制）
+- [`README.md`](https://github.com/LQX-Code-SH/Romanbo-Python-SDK#readme)（安装、上手、命令行、API、安全与已知限制）
 - `SERVO_SPEC.md`（字节级逐命令规格）
 - 《ROMANBO RS485 舵机通信控制协议》
 
