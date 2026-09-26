@@ -58,7 +58,15 @@ jobs:
           print('文档站产物校验通过，api/index.html =', api.stat().st_size, '字节')
           "
 
-      - uses: actions/configure-pages@v5
+      # 前置条件：仓库需已启用 Pages（Settings → Pages → Build and deployment
+      # → Source 选 “GitHub Actions”）。未启用时本步骤会以
+      # “Get Pages site failed … Not Found (GET /repos/{owner}/{repo}/pages)” 失败，
+      # 那是仓库设置问题，与文档内容无关（构建与产物自检已在前面通过）。
+      # 注：configure-pages 的 enablement 选项不接受 GITHUB_TOKEN，只能手工启用。
+      # PR（含 fork）的令牌没有 Pages 写权限，故仅在非 PR 事件上执行本步骤。
+      - name: 配置 Pages
+        if: github.event_name != 'pull_request'
+        uses: actions/configure-pages@v5
 
       - uses: actions/upload-pages-artifact@v3
         with:
