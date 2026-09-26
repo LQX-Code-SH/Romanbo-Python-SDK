@@ -34,8 +34,10 @@
 
 ### 文档
 - `README.md`：安装、上手、命令行参考、Python API、真机实测结论、安全与已知限制
-- `SERVO_SPEC.md`：字节级逐命令协议规格（含证据强度标记与未验证项清单）
-- `SERVO_TEST_PLAN.md`：分级测试方案（L0~L7 用例、判定门限、缺陷回归）
+- `docs/SERVO_SPEC.md`：字节级逐命令协议规格（含证据强度标记与未验证项清单）
+- `docs/SERVO_TEST_PLAN.md`：分级测试方案（L0~L7 用例、判定门限、缺陷回归）
+- `docs/evidence/`：真机联调探针日志（部分实测结论的原始证据）
+- `docs/README.md`：文档索引
 
 [Unreleased]: https://github.com/LQX-Code-SH/Romanbo-Python-SDK/compare/v1.0.0...HEAD
 [1.0.0]: https://github.com/LQX-Code-SH/Romanbo-Python-SDK/releases/tag/v1.0.0

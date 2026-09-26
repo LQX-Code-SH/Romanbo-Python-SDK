@@ -43,4 +43,4 @@ taught.json
 taught.rsc
 # 探针日志：默认忽略，但保留已入库的实测证据
 *.log
-!logs/*.log
+!docs/evidence/*.log

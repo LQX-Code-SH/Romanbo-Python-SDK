@@ -25,7 +25,9 @@
     python tools/servo_probe.py COM3 listen --seconds 10
     python tools/servo_probe.py COM3 move --id 1 --delta 15 --period 800
 
-日志默认写入 ``python/logs/probe-<时间戳>.log``。
+日志默认写入**仓库根目录**下的 ``logs/probe-<时间戳>.log``（该目录已被 ``.gitignore``
+忽略，属临时产物）；需要长期留存的证据请整理进 ``docs/evidence/``（已入库，见
+``docs/README.md``）。
 """
 
 from __future__ import annotations

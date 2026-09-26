@@ -50,7 +50,7 @@
 
 ### 1.3 参考文档
 
-- `README.md`（实测结论：§6、§8）
+- [`README.md`](../README.md)（安装、上手、命令行、API、安全与已知限制）
 - `SERVO_SPEC.md`（字节级逐命令规格）
 - 《ROMANBO RS485 舵机通信控制协议》
 
@@ -841,7 +841,7 @@ print('ok', ok, 'fail', fail)
 | 5 | 低 | `transport.SerialTransport.close()` | 未 `flush()`/`reset_output_buffer()`，理论上可能丢最后几帧 | 关闭前 flush |
 | 6 | 低 | `protocol.FrameParser._candidate_lengths` | 同时尝试 `LEN+6` 与 `LEN` 两种长度语义，理论上有 1/256 概率把请求帧误切为应答帧长度 | 可加"优先与上下文方向匹配"的约束 |
 | 7 | 低 | `robot._request_once` | 每次只 `parser.reset()`，不清 OS 接收缓冲；上一条迟到应答可能串入 | 结合 `expect_cmd` 已基本可控，可加时间窗丢弃 |
-| 8 | 低 | 仓库卫生 | `romanbo.egg-info/`、`__pycache__/`、`logs/*.log` 在工作区中 | 补 `.gitignore` |
+| 8 | 低 | 仓库卫生 | 构建产物与缓存曾散落在工作区 | ✅ 已补 `.gitignore`；实测证据保留在 `docs/evidence/` |
 | 9 | 低 | 文档一致性 | README 目录写成 `python/`（实际为仓库根）；测试数写 122（实际 126）；示例路径 `../example/` 在仓库外 | 同步更新 |
 
 ### 优点（保持）

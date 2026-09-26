@@ -211,7 +211,7 @@ s.last_peak_load                        # 最近一次带限力运动的峰值�
 ## 5. 协议要点
 
 > 字节级逐命令参考（请求/回包布局、实例报文、参数语义、未验证项清单）见
-> **[`SERVO_SPEC.md`](SERVO_SPEC.md)**；本节只给要点。
+> **[`docs/SERVO_SPEC.md`](docs/SERVO_SPEC.md)**；本节只给要点。
 
 ### 帧格式（收发同构）
 
@@ -249,7 +249,7 @@ FF FF | ID | LEN | CMD | DATA ... | CHK
 | 0x0E | **SetAccelerate** | `d[5]=值` | ❌ **实测无效果**（0 vs 200 的到位时间/轨迹一致；`0x19` 不可回读） |
 | 0x0F | SetPositionLimit | `min,max` 各 16 位大端（LEN=10） | ✅ 可经 `0x1A` 回读 |
 | 0x10 | **SetTorque** | `d[5]=0/1` | ✅ 真机有效（关后位置指令不动） |
-| 0x11 | SetLED | 4 参版 `d[5]=data<<5`；6 参版 `((r?8)+(g?4)+(b?2))<<4` | ✅ 颜色位：bit7=红、bit6=绿、bit5=蓝（协议文档 + 逐字节交叉校验，见 [`SERVO_SPEC.md`](SERVO_SPEC.md) §5.4） |
+| 0x11 | SetLED | 4 参版 `d[5]=data<<5`；6 参版 `((r?8)+(g?4)+(b?2))<<4` | ✅ 颜色位：bit7=红、bit6=绿、bit5=蓝（协议文档 + 逐字节交叉校验，见 [`docs/SERVO_SPEC.md`](docs/SERVO_SPEC.md) §5.4） |
 | 0x12~0x1A | GetPID/Temp/Position/Calibration/Motor/Margin/**Load**/Accelerate/PositionLimit | — | 见 [6.5 支持矩阵](#65-查询命令支持矩阵) |
 | 0x20 | SetSync | — | ❌ 不响应 |
 | 0x21 | SetNextPosition / SetNextWheel | 位域见下 | ❌ 不响应 |
@@ -430,7 +430,7 @@ torque >= 3: v = (ledkind<<13) | (torque<<11) | (relative<<10) | (freewheel<<9) 
 **对策**：在 `SerialTransport.write()` 写口统一节流到 `MIN_FRAME_GAP = 2 ms`
 （而不是在每个调用点各自 `sleep`），因此 `move` / `play` 的多关节路径自动修复；
 单帧命令（GET 类）本来就等回包，不受影响。单元回归见
-`tests/test_standalone.py::TestFrameGap`，整机回归见 `SERVO_TEST_PLAN.md` L4-01 / L4-02 / L7-01。
+`tests/test_standalone.py::TestFrameGap`，整机回归见 `docs/SERVO_TEST_PLAN.md` L4-01 / L4-02 / L7-01。
 
 ---
 
@@ -578,9 +578,7 @@ python examples/04_offline_frames.py           # 打印每条指令的真实报�
 
 ```
 .
-├── README.md                    本文件（项目级说明：安装/上手/实测结论/限制）
-├── SERVO_SPEC.md                舵机功能・协议・接口规格（字节级逐命令参考）
-├── SERVO_TEST_PLAN.md           舵机控制测试方案（分级用例 / 判定门限 / 缺陷回归）
+├── README.md                    本文件（项目级说明：安装/上手/命令行/API/限制）
 ├── LICENSE                      许可证（MIT）
 ├── CHANGELOG.md                 版本变更记录
 ├── CONTRIBUTING.md              贡献指南（开发约定 / 测试 / 危险改动）
@@ -588,6 +586,11 @@ python examples/04_offline_frames.py           # 打印每条指令的真实报�
 ├── pyproject.toml               打包元数据 + ruff / mypy 配置
 ├── .editorconfig / .gitignore   编辑器与忽略规则
 ├── .github/workflows/ci.yml     CI：Python 3.8~3.13 矩阵测试 + 发行包构建
+├── docs/
+│   ├── README.md                文档索引（本目录导览）
+│   ├── SERVO_SPEC.md            字节级逐命令协议规格
+│   ├── SERVO_TEST_PLAN.md       分级测试方案（L0~L7 / 判定门限 / 缺陷回归）
+│   └── evidence/                真机联调探针日志（实测结论的原始证据）
 ├── romanbo/
 │   ├── protocol.py              帧编解码、命令码、校验、回包解析
 │   ├── transport.py             SerialTransport（pyserial）/ MockTransport
@@ -606,16 +609,16 @@ python examples/04_offline_frames.py           # 打印每条指令的真实报�
 │   ├── 03_teach_and_export.py   py examples/03_teach_and_export.py COM3 --ids 8,10 --out taught.rsc
 │   └── 04_offline_frames.py     py examples/04_offline_frames.py
 ├── tools/servo_probe.py         单舵机联调 / 回包取样工具（原始十六进制）
-├── tests/                       129 项单元测试（含独立可用性 / 收发锁 / 帧间隔）
-└── logs/                        真机联调探针日志（作为实测结论的原始证据）
+└── tests/                       129 项单元测试（含独立可用性 / 收发锁 / 帧间隔）
 ```
 
 **关于本 SDK**
 
 - 本 SDK 面向 **ROMANBO** 舵机型号，独立实现其 RS485 总线控制协议，运行期仅依赖 `pyserial`。
-- 协议字段、命令码与常量以 [`SERVO_SPEC.md`](SERVO_SPEC.md) 为准；已真机验证的结论均标注实测环境与日期。
+- 协议字段、命令码与常量以 [`docs/SERVO_SPEC.md`](docs/SERVO_SPEC.md) 为准；已真机验证的结论均标注实测环境与日期。
 - LED 颜色位映射与零点偏差 ±128 偏置语义依据《ROMANBO RS485 舵机通信控制协议》；
-  其示例报文已与本实现逐字节交叉校验（发现 3 处校验和笔误，见 [`SERVO_SPEC.md`](SERVO_SPEC.md) §11）。
+  其示例报文已与本实现逐字节交叉校验（发现 3 处校验和笔误，见 [`docs/SERVO_SPEC.md`](docs/SERVO_SPEC.md) §11）。
+- 文档导览见 [`docs/README.md`](docs/README.md)（协议规格 / 测试方案 / 证据日志）。
 - 使用真机前请自行确认设备安全。
 - 许可证：MIT（见 [`LICENSE`](LICENSE)）；版本变更见 [`CHANGELOG.md`](CHANGELOG.md)。
 - 版本：`romanbo 1.0.0`（见 `romanbo/__init__.py`）。
