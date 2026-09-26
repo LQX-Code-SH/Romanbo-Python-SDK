@@ -72,6 +72,10 @@ legend{color:var(--dim);font-size:12px;padding:0 6px}
 #events div{padding:2px 0;border-bottom:1px solid #1c2230}
 .pill{font-family:var(--mono);font-size:11px;color:var(--dim);background:#0b0f16;
   border:1px solid var(--line);border-radius:99px;padding:2px 9px}
+.led{display:flex;align-items:center;justify-content:center;gap:5px;
+  padding:6px 2px;font-size:12.5px}
+.led i{width:11px;height:11px;border-radius:50%;border:1px solid #0006;background:#333;flex:0 0 auto}
+.led.sel{border-color:var(--acc);box-shadow:inset 0 0 0 1px var(--acc)}
 .hint{color:var(--dim);font-size:12px;margin-top:6px}
 .warn{color:var(--warn)}
 </style>
@@ -207,11 +211,18 @@ legend{color:var(--dim);font-size:12px;padding:0 6px}
           <div class="hint">进入死区即视为「到位」，出厂值 5。</div>
         </fieldset>
         <fieldset><legend>LED</legend>
-          <div class="row">
-            <input type="number" id="inLed" placeholder="0..255" min="0" max="255">
-            <button id="btnLedWrite">写入</button>
+          <div class="grid" id="ledGrid" style="grid-template-columns:repeat(4,1fr);gap:6px">
+            <button class="led" data-r="0" data-g="0" data-b="0"><i style="background:#3a3f4b"></i>灭</button>
+            <button class="led" data-r="1" data-g="0" data-b="0"><i style="background:#f85149"></i>红</button>
+            <button class="led" data-r="0" data-g="1" data-b="0"><i style="background:#3fb950"></i>绿</button>
+            <button class="led" data-r="0" data-g="0" data-b="1"><i style="background:#4493f8"></i>蓝</button>
+            <button class="led" data-r="1" data-g="1" data-b="0"><i style="background:#e3b341"></i>黄</button>
+            <button class="led" data-r="1" data-g="0" data-b="1"><i style="background:#bc8cff"></i>紫</button>
+            <button class="led" data-r="0" data-g="1" data-b="1"><i style="background:#39c5cf"></i>青</button>
+            <button class="led" data-r="1" data-g="1" data-b="1"><i style="background:#e6edf3"></i>白</button>
           </div>
-          <div class="hint">颜色位：bit7 红 / bit6 绿 / bit5 蓝。</div>
+          <div class="hint">协议只定义这 8 种组合（无亮度/闪烁）。<b>LED 状态无法回读</b>，
+            高亮的是最近一次下发值，不是实测状态。</div>
         </fieldset>
         <fieldset><legend>危险操作</legend>
           <div class="row"><button class="danger" id="btnCalib">当前位置设为零点</button></div>
@@ -422,8 +433,7 @@ function renderParamInputs(){
   if (cfg.margin !== null && cfg.margin !== undefined) $("#inMargin").value = cfg.margin;
 }
 const CTRL_IDS = ["btnGo", "btnJump", "btnCenter", "btnTorqueOn", "btnTorqueOff", "btnReadCfg",
-  "btnPidWrite", "btnPidRead", "btnLimWrite", "btnLimFull", "btnMarginWrite", "btnLedWrite",
-  "btnCalib"];
+  "btnPidWrite", "btnPidRead", "btnLimWrite", "btnLimFull", "btnMarginWrite", "btnCalib"];
 function renderPanel(){
   $("#selTitle").textContent = sel === null ? "未选择舵机" : ("ID " + sel);
   const has = sel !== null && state.connected;
@@ -432,6 +442,7 @@ function renderPanel(){
     if (el) el.disabled = !has;
   });
   document.querySelectorAll(".btnRel").forEach(el => { el.disabled = !has; });
+  document.querySelectorAll("#ledGrid .led").forEach(el => { el.disabled = !has; });
   if (live && live.position !== null && live.position !== undefined &&
       !moveBusy && Date.now() - lastTouch > 2500){
     setTarget(live.position);
@@ -474,6 +485,20 @@ async function act(fn, label){
   await refreshFull(); renderAll();
 }
 
+function markLed(el){
+  document.querySelectorAll("#ledGrid .led").forEach(b => b.classList.toggle("sel", b === el));
+}
+async function setLed(btn){
+  if (sel === null) return;
+  try{
+    // 协议只认 8 种组合，所以直接传三色；服务端返回实际下发的 d[5] 便于对报文
+    const r = await api("/api/servo/" + sel + "/led",
+      { red: btn.dataset.r === "1", green: btn.dataset.g === "1", blue: btn.dataset.b === "1" });
+    markLed(btn);
+    ok("LED 已下发：d[5] = 0x" + r.led.byte.toString(16).toUpperCase().padStart(2, "0"));
+  }catch(e){ bad("LED 写入失败：" + e.message); }
+}
+
 function bind(){
   $("#btnPorts").onclick = loadPorts;
   $("#btnConn").onclick = () => state.connected ? disconnect() : connect();
@@ -501,8 +526,9 @@ function bind(){
     "恢复全量程限位");
   $("#btnMarginWrite").onclick = () => act(() => api("/api/servo/" + sel + "/margin",
     {value:Number($("#inMargin").value)}), "写入 Margin");
-  $("#btnLedWrite").onclick = () => act(() => api("/api/servo/" + sel + "/led",
-    {value:Number($("#inLed").value)}), "写入 LED");
+  document.querySelectorAll("#ledGrid .led").forEach(btn => {
+    btn.onclick = () => setLed(btn);
+  });
   $("#btnCalib").onclick = () => {
     if (!confirm("把 ID " + sel + " 的当前位置设为零点？这会改写舵机内部标定。")) return;
     act(() => api("/api/servo/" + sel + "/calib", {}), "零点校准");

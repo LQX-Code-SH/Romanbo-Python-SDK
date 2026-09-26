@@ -310,10 +310,31 @@ class WebConsole:
             self._servo(id_).set_margin(int(value))
             return {"id": int(id_), "margin": int(value)}
 
-    def set_led(self, id_: int, value: int) -> Dict[str, Any]:
+    def set_led(self, id_: int, *, red: Optional[bool] = None,
+                green: Optional[bool] = None, blue: Optional[bool] = None,
+                value: Optional[int] = None) -> Dict[str, Any]:
+        """设 LED。给三色（推荐）走 ``set_led_color``，给 ``value`` 走 ``set_led``。
+
+        协议文档只定义了 8 种组合（**无亮度/闪烁**），三色落在 ``d[5]`` 的
+        bit7/bit6/bit5 = 红/绿/蓝；``set_led(value)`` 是「编号方式」的另一种写法
+        （``value`` 的低 3 位，4/2/1 = 红/绿/蓝）。见 `docs/SERVO_SPEC.md` §5.4。
+
+        返回 ``led`` 含三色与**实际下发的 ``d[5]`` 字节**，便于对着报文日志核对。
+        """
         with self._lock:
-            self._servo(id_).set_led(int(value) & 0xFF)
-            return {"id": int(id_), "led": int(value) & 0xFF}
+            servo = self._servo(id_)
+            if red is None and green is None and blue is None:
+                if value is None:
+                    raise ValueError("需要 red / green / blue，或 value")
+                raw = int(value) & 0xFF
+                servo.set_led(raw)
+                rgb = (bool(raw & 4), bool(raw & 2), bool(raw & 1))
+            else:
+                rgb = (bool(red), bool(green), bool(blue))
+                servo.set_led_color(*rgb)
+            byte = (0x80 if rgb[0] else 0) | (0x40 if rgb[1] else 0) | (0x20 if rgb[2] else 0)
+            return {"id": int(id_), "led": {"red": rgb[0], "green": rgb[1],
+                                            "blue": rgb[2], "byte": byte}}
 
     def calibrate(self, id_: int) -> Dict[str, Any]:
         """把当前位置设为零点（``0x23``）。**会改写舵机内部标定。**"""
@@ -533,7 +554,10 @@ class _Handler(BaseHTTPRequestHandler):
             if action == "margin":
                 return 200, console.set_margin(id_, body.get("value", 0))
             if action == "led":
-                return 200, console.set_led(id_, body.get("value", 0))
+                return 200, console.set_led(id_, red=body.get("red"),
+                                            green=body.get("green"),
+                                            blue=body.get("blue"),
+                                            value=body.get("value"))
             if action == "calib":
                 return 200, console.calibrate(id_)
         raise ValueError(f"未知路径 {path}")

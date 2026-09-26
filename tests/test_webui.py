@@ -192,6 +192,43 @@ class TestWebConsole(_ServerMixin, unittest.TestCase):
         self.assertEqual(cfg["pid"], [100, 1, 20])
         self.assertEqual(cfg["position_limit"], [255, 768])
 
+    # -- LED（8 色）-------------------------------------------------------- #
+
+    #: 与 docs/SERVO_SPEC.md §5.4 的 d[5] 映射一致
+    LED_BYTE = {(False, False, False): 0x00, (True, False, False): 0x80,
+                (False, True, False): 0x40, (False, False, True): 0x20,
+                (True, True, False): 0xC0, (True, False, True): 0xA0,
+                (False, True, True): 0x60, (True, True, True): 0xE0}
+
+    def test_led_color_byte_matches_protocol(self) -> None:
+        for (red, green, blue), byte in self.LED_BYTE.items():
+            with self.subTest(colors=(red, green, blue)):
+                status, payload = self.call("/api/servo/9/led",
+                                            {"red": red, "green": green, "blue": blue})
+                self.assertEqual(status, 200)
+                self.assertEqual(payload["led"]["byte"], byte)
+
+    def test_led_color_reaches_the_wire(self) -> None:
+        """真正的验收点：线上帧里的 d[5] 才是发给舵机的值。"""
+        self.call("/api/servo/9/led", {"red": True, "green": False, "blue": True})
+        _, frames = self.call("/api/frames?since=0")
+        sent = [f["hex"] for f in frames["frames"]
+                if f["dir"] == "tx" and f["hex"].startswith("FF FF 09 07 11")]
+        self.assertTrue(sent, "没有捕获到 ID9 的 LED 下发帧")
+        self.assertEqual(sent[-1], "FF FF 09 07 11 A0 41")      # 紫
+
+    def test_led_raw_value_is_still_supported(self) -> None:
+        """旧的 ``value`` 写法保留：低 3 位 = 红/绿/蓝（4/2/1），不是 d[5] 本体。"""
+        status, payload = self.call("/api/servo/9/led", {"value": 5})   # 4+1 = 红+蓝
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["led"]["byte"], 0xA0)
+        self.assertEqual((payload["led"]["red"], payload["led"]["blue"]), (True, True))
+
+    def test_led_needs_a_color_or_value(self) -> None:
+        status, payload = self.call("/api/servo/9/led", {})
+        self.assertEqual(status, 409)
+        self.assertIn("red", str(payload))
+
     def test_torque_and_multi_move(self) -> None:
         self.assertEqual(self.call("/api/servo/6/torque", {"on": False})[0], 200)
         status, payload = self.call("/api/move", {"targets": {"6": 600, "7": 400}})
@@ -307,7 +344,7 @@ class TestPageApiContract(_ServerMixin, unittest.TestCase):
         ("POST", "/api/servo/1/pid", {"p": 50, "i": 0, "d": 5}),
         ("POST", "/api/servo/1/limit", {"min": 1, "max": 1023}),
         ("POST", "/api/servo/1/margin", {"value": 5}),
-        ("POST", "/api/servo/1/led", {"value": 1}),
+        ("POST", "/api/servo/1/led", {"red": True, "green": False, "blue": False}),
         ("POST", "/api/servo/1/calib", {}),
         ("GET", "/api/capture", None),
         ("POST", "/api/move", {"targets": {"1": 600, "2": 500}}),

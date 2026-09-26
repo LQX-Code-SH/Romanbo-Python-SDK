@@ -50,7 +50,7 @@ ROMANBO 舵机控制台已启动，请用浏览器打开：
 | 实时读数 | 位置 ADC / 角度 / 实测负荷 / 温度 / PID / 位置限位 |
 | 运动控制 | 滑块与角度双输入；「平滑运动」走步进逼近（给速度）、「立即到位」最大速度；±10°、回中位；限力阈值与负荷检查间隔；出力档位 H/M/L/W；力矩使能/断开 |
 | 多关节 | 每个在线舵机一根滑块，「全部平滑到位」一次下发（走 `robot.move`） |
-| 参数写入 | PID / 位置限位 / Margin / LED / 零点校准，**写入后回读确认**，失败会报错 |
+| 参数写入 | PID / 位置限位 / Margin / **LED（8 色可选：灭/红/绿/蓝/黄/紫/青/白）** / 零点校准，**写入后回读确认**，失败会报错 |
 | 报文日志 | TX/RX 原始十六进制 + 命令码名，可暂停 / 清空 / 自动滚动 |
 
 ## HTTP 接口
@@ -68,7 +68,8 @@ ROMANBO 舵机控制台已启动，请用浏览器打开：
 | POST | `/api/connect`、`/api/disconnect` | `{port, mock, baudrate}` |
 | POST | `/api/scan` | `{start, end}` |
 | POST | `/api/servo/{id}/goto` | `{adc\|angle, speed_dps, max_load, level, load_check_every}` |
-| POST | `/api/servo/{id}/torque`、`/pid`、`/limit`、`/margin`、`/led`、`/calib` | 见界面 |
+| POST | `/api/servo/{id}/torque`、`/pid`、`/limit`、`/margin`、`/calib` | 见界面 |
+| POST | `/api/servo/{id}/led` | `{red, green, blue}`（推荐）或 `{value}`（低 3 位 = 红/绿/蓝）；响应含**实际下发的 `d[5]`** |
 | POST | `/api/move` | `{targets:{id:adc}, speed_dps, max_load, level, load_check_every}` |
 | POST | `/api/stop_all` | 对所有在线舵机断开力矩（未扫描时向 1..32 广播） |
 
@@ -94,6 +95,15 @@ ROMANBO 舵机控制台已启动，请用浏览器打开：
 | 单关节 512 → 600 @30°/s（不限力） | ✅ 9 步到位 **599**（误差 1 ADC ≈ 0.3°） |
 | 多关节 8→530 / 10→492 @30°/s | ✅ **两个关节都到位**（531 / 492）——`MIN_FRAME_GAP` 修复的端到端回归 |
 | 回到中位 | ✅ 8: 513 / 10: 511 |
+
+LED 八色（同一环境，逐帧核对 `docs/SERVO_SPEC.md` §5.4）：
+
+| 下发 | 线上帧（ID 8） | `d[5]` |
+|---|---|---|
+| 红 `(1,0,0)` | `FF FF 08 07 11 80 62` | `0x80` ✅ |
+| 蓝 `(0,0,1)` | `FF FF 08 07 11 20 C2` | `0x20` ✅ |
+| 紫 `(1,0,1)`／旧写法 `value=5` | `FF FF 08 07 11 A0 42` | `0xA0` ✅ |
+| 灭 `(0,0,0)` | `FF FF 08 07 11 00 E2` | `0x00` ✅ |
 
 ### 顺带测到一个重要事实：起步冲击
 
