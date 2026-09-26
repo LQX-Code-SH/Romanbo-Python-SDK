@@ -37,5 +37,5 @@
 - `SERVO_SPEC.md`：字节级逐命令协议规格（含证据强度标记与未验证项清单）
 - `SERVO_TEST_PLAN.md`：分级测试方案（L0~L7 用例、判定门限、缺陷回归）
 
-[Unreleased]: https://github.com/LQX-Code-SH/romanbo/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/LQX-Code-SH/romanbo/releases/tag/v1.0.0
+[Unreleased]: https://github.com/LQX-Code-SH/Romanbo-Python-SDK/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/LQX-Code-SH/Romanbo-Python-SDK/releases/tag/v1.0.0

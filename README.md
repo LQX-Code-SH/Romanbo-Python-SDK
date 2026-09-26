@@ -1,6 +1,6 @@
 # ROMANBO 舵机 / 整机控制库（Python SDK）
 
-[![CI](https://github.com/LQX-Code-SH/romanbo/actions/workflows/ci.yml/badge.svg)](https://github.com/LQX-Code-SH/romanbo/actions/workflows/ci.yml)
+[![CI](https://github.com/LQX-Code-SH/Romanbo-Python-SDK/actions/workflows/ci.yml/badge.svg)](https://github.com/LQX-Code-SH/Romanbo-Python-SDK/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.8%2B-blue)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Typing: py.typed](https://img.shields.io/badge/typing-py.typed-blue)](https://peps.python.org/pep-0561/)

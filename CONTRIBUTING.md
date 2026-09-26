@@ -5,7 +5,7 @@
 ## 环境准备
 
 ```bash
-git clone https://github.com/LQX-Code-SH/romanbo.git
+git clone https://github.com/LQX-Code-SH/Romanbo-Python-SDK.git
 cd romanbo
 python -m pip install -e ".[dev]"     # 或：pip install -e . && pip install pyserial
 ```

@@ -35,10 +35,10 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/LQX-Code-SH/romanbo"
-Repository = "https://github.com/LQX-Code-SH/romanbo"
-Issues = "https://github.com/LQX-Code-SH/romanbo/issues"
-Changelog = "https://github.com/LQX-Code-SH/romanbo/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/LQX-Code-SH/Romanbo-Python-SDK"
+Repository = "https://github.com/LQX-Code-SH/Romanbo-Python-SDK"
+Issues = "https://github.com/LQX-Code-SH/Romanbo-Python-SDK/issues"
+Changelog = "https://github.com/LQX-Code-SH/Romanbo-Python-SDK/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 dev = ["build>=1.0", "ruff>=0.4", "mypy>=1.8"]
