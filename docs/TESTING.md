@@ -1,0 +1,55 @@
+# 测试与自检
+
+## 日常自检
+
+```bash
+python -m unittest discover -s tests -t .      # 129 项单元测试（全部通过，无跳过）
+python -m romanbo selftest                     # 60 条基准报文（逐字节比对）
+python -m romanbo --mock scan                  # 离线模拟器冒烟
+python examples/04_offline_frames.py           # 打印每条指令的真实报文
+```
+
+**全部单元测试都不需要硬件**：串口相关路径由 `MockTransport`（`romanbo/transport.py`）
+承担，可注入丢包等故障。
+
+## 测试文件分工
+
+| 测试文件 | 覆盖 |
+|---|---|
+| `tests/test_protocol.py` | 帧编解码、校验、命令打包（含协议位域）、基准向量 |
+| `tests/test_rsc.py` | `.rsc` 解析与生成（重复键、场景过滤、字段缺失、往返一致） |
+| `tests/test_mock.py` | 整机流程、握手、扫描、示教、播放（离线模拟器）、`capture` 重试语义 |
+| `tests/test_speed.py` | 角速度步进规划、多关节同节拍、`play` 插值 |
+| `tests/test_load.py` | 实测负荷语义、软件限力、别名兼容 |
+| `tests/test_torque_level.py` | 出力档位 H/M/L/W 的位域与 CLI 取值 |
+| `tests/test_cli.py` | 命令行参数解析与 `move --settle/--readback` 行为 |
+| `tests/test_doc_led.py` | 协议文档 LED 示例与本实现的逐字节交叉校验 |
+| `tests/test_standalone.py` | 脱离仓库可用性（子进程屏蔽 `serial`）、收发锁、帧间隔 |
+
+## 文档站
+
+```bash
+python -m pip install -e ".[docs]"             # 文档站依赖
+python -m mkdocs build --strict                # 构建（任何告警即失败）
+python -m mkdocs serve                         # 本地预览 http://127.0.0.1:8000
+```
+
+CI 会在 PR 上以 `--strict` 构建文档站，并校验 API 参考确实已生成。
+
+## 真机验证
+
+本仓库的实测结论来自两个 MOS 系列舵机（ID 8 / ID 10）串联的验证环境。
+完整的**分级测试方案**（L0~L7 共 39 个用例、判定门限、结果记录模板、缺陷专项回归）
+见[测试方案](SERVO_TEST_PLAN.md)，原始字节证据见[证据日志](evidence/README.md)。
+
+手上有硬件时，最小验证流程：
+
+```bash
+python -m romanbo --port /dev/ttyUSB0 selftest            # 1. 离线链路
+python -m romanbo --port /dev/ttyUSB0 scan                # 2. 在线发现
+python -m romanbo --port /dev/ttyUSB0 read --ids 8,10     # 3. 只读参数
+python -m romanbo --port /dev/ttyUSB0 move --targets 8:540,10:480 --speed 30 --readback
+```
+
+> 第 4 步是**多关节回归的关键用例**（L4-01）：若只有第一个关节到位，
+> 说明帧间隔保护失效，见[实测结论 §8](FINDINGS.md)。

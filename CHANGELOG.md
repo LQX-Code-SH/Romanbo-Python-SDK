@@ -21,6 +21,11 @@
 - 文档站锚点改用 Unicode slugify，与 GitHub 的锚点规则保持一致（中文标题可正常跳转）
 - `docs/SERVO_SPEC.md` §7 明确与自动生成 API 参考的主从关系（以 docstring 为准）
 - `Servo.__all__` 补上 `LoadLimitExceeded`
+- **主页 README 精简为入口页**（特性 / 安装 / 30 秒上手 / API 速览 / 实测摘要 / 安全提示 / 文档导航），
+  细节全部下沉到 `docs/`：新增 [安装与环境](docs/INSTALL.md)、[命令行参考](docs/CLI.md)、
+  [协议速览](docs/PROTOCOL.md)、[真机实测结论](docs/FINDINGS.md)、[工程文件](docs/RSC.md)、
+  [软件限力](docs/LOAD_LIMITING.md)、[测试与自检](docs/TESTING.md)、[安全与已知限制](docs/SAFETY.md)
+  八个页面；`docs/README.md` 与文档站导航按「入门 / 协议与硬件 / 接口与数据 / 测试 / 安全」重组
 
 ### 修复
 - `pyproject.toml`：`authors` 里不允许出现 `url` 字段（PEP 621），此前会导致

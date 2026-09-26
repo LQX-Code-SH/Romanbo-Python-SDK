@@ -39,10 +39,22 @@ nav:
   - 首页: README.md
   - 项目 README: https://github.com/LQX-Code-SH/Romanbo-Python-SDK#readme
   - English README: https://github.com/LQX-Code-SH/Romanbo-Python-SDK/blob/main/README.en.md
-  - 协议规格: SERVO_SPEC.md
-  - 测试方案: SERVO_TEST_PLAN.md
-  - API 参考: api.md
-  - 证据日志: evidence/README.md
+  - 入门:
+      - 安装与环境: INSTALL.md
+      - 命令行参考: CLI.md
+      - 软件限力: LOAD_LIMITING.md
+  - 协议与硬件:
+      - 协议速览: PROTOCOL.md
+      - 字节级协议规格: SERVO_SPEC.md
+      - 真机实测结论: FINDINGS.md
+      - 证据日志: evidence/README.md
+  - 接口与数据:
+      - API 参考: api.md
+      - 工程文件 .rsc: RSC.md
+  - 测试:
+      - 测试与自检: TESTING.md
+      - 测试方案: SERVO_TEST_PLAN.md
+  - 安全与限制: SAFETY.md
 
 plugins:
   - search:

@@ -1,0 +1,72 @@
+# 命令行参考
+
+```bash
+python -m romanbo [全局选项] <命令> [命令选项]
+```
+
+**全局选项**：`-p/--port`、`--mock`、`--baudrate`、`--timeout`（回包超时秒）、
+`--json`（结构化输出）、`--frames`（打印收发原始帧）。
+
+## 命令一览
+
+| 命令 | 说明与主要选项 |
+|---|---|
+| `selftest` | 离线校验报文编码（基准向量，60 条） |
+| `handshake` | 连接自检（型号 + 固件版本，需控制器板） |
+| `scan` | `--start --end --probe-timeout`（默认 0.15 s）、`--quarantine`（探测失败后的总线静默期，默认 0.4 s） |
+| `read` | `--ids 8,10`（ADC 与角度）；对不存在的 ID 只等一次超时 |
+| `teach` | `--ids`：批量回读位置；加 `--file taught.json` 则把当前姿态**追加为一帧**，多次执行累积成动作序列 |
+| `export` | `--file taught.json --out taught.rsc`：把示教会话导出为**可播放的 `.rsc` 工程文件**（离线） |
+| `config` | `--id/--ids`：位置、PID、限值、**load（实测负荷）**、acceleration、margin、温度、零点 |
+| `load` | `--id/--ids --watch N --interval 秒`：实测负荷采样 |
+| `jog` | `--id --degrees 度 \| --delta ADC`；速度用 `--speed 度/秒` 或 `--period ms`；可加 `--max-load`、`--level` |
+| `angle` | `--id --degrees`（绝对角度，中点 512 = 0°），速度选项同上 |
+| `sweep` | `--id --degrees/--low/--high --cycles`；`--no-readback --no-return --loop` |
+| `move` | `--targets 8:600,10:480`；`--speed`（角速度）/`--period`；`--max-load`；`--no-capture`；`--settle 秒`（下发后等到位再返回，`--readback` 时默认 0.3）；`--readback`（回读实际位置与误差） |
+| `torque` | `on\|off` `--ids`：力矩使能开关 |
+| `led` | `--id/--ids --value N` 或 `--color 1,0,1` |
+| `pid` | `--id --p --i --d [--nosave]`：写入后**回读确认**，失败退出码 1 |
+| `limit` | `--id --min --max` 位置限值（掉电保存；写入后**回读确认**，失败退出码 1） |
+| `param` | `current-limit \| margin \| temp \| offset \| period \| accelerate --value N` |
+| `wheel` | `--id --speed 0..255 [--ccw] [--free] [--relative]` |
+| `sync` | `--id`（默认 254 广播）发同步触发 |
+| `calib` | 把当前位置设为零点（`0x23`） |
+| `set-id` / `reset` | 改 ID / 复位 |
+| `play` | `文件 [--scene N] [--ids 8,10] [--loop] [--speed 度每秒] [--speed-scale 周期倍率] [--no-capture] [--max-load] [--torque on/off]`；`--ids` 只驱动在线关节（整机文件务必指定，否则向不存在的 ID 发帧会触发 0.4 s 总线静默期） |
+| `info` | 打印 `.rsc` 工程摘要（离线） |
+
+## 退出码
+
+| 码 | 含义 |
+|---|---|
+| `0` | 正常 |
+| `1` | 参数错误 / 回读确认失败 |
+| `4` | **因软件限力（`--max-load`）中止**（见 [软件限力](LOAD_LIMITING.md)） |
+| `5` | 串口错误 |
+| `130` | 用户中断（Ctrl+C） |
+
+## 常用组合
+
+```bash
+# 离线：无硬件跑通全流程
+python -m romanbo --mock scan
+python -m romanbo --mock --json read --ids 1,2
+
+# 真机：扫描 → 读参数 → 看负荷
+python -m romanbo --port COM3 scan --start 1 --end 32
+python -m romanbo --port COM3 --json config --ids 8,10
+python -m romanbo --port COM3 load --ids 8 --watch 10 --interval 0.1
+
+# 运动：相对 +15° @60°/s，带软件限力
+python -m romanbo --port COM3 jog --id 8 --degrees 15 --speed 60 --max-load 60
+
+# 多关节 + 到位确认
+python -m romanbo --port COM3 move --targets 8:600,10:480 --speed 30 --readback
+
+# 示教 → 导出 → 回放
+python -m romanbo --port COM3 teach --ids 8,10 --file taught.json --period 500
+python -m romanbo export --file taught.json --out taught.rsc
+python -m romanbo --port COM3 play taught.rsc --ids 8,10 --speed 15
+```
+
+> 详细的 `.rsc` 播放语义见 [工程文件](RSC.md)；限力参数怎么选见 [软件限力](LOAD_LIMITING.md)。

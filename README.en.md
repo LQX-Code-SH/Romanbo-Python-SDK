@@ -193,7 +193,25 @@ reasonable starting point; `10` will abort immediately on start-up.
   period as a speed control, multi-joint preset + sync trigger (`0x20`/`0x21`),
   reading acceleration (`0x19`), controller-board commands (no board available).
 
-Details: [`README.md`](README.md) §10 and [`docs/SERVO_SPEC.md`](docs/SERVO_SPEC.md) §10.
+Details: [`docs/SAFETY.md`](docs/SAFETY.md) and [`docs/SERVO_SPEC.md`](docs/SERVO_SPEC.md) §10.
+
+## Documentation
+
+| Document | Contents |
+|---|---|
+| [Install & environment](docs/INSTALL.md) | dependencies, usage modes, Linux/macOS permissions, concurrency |
+| [CLI reference](docs/CLI.md) | all subcommands, global options, exit codes |
+| [Protocol overview](docs/PROTOCOL.md) | frame format, addressing, command codes, ACK rules |
+| [Byte-level spec](docs/SERVO_SPEC.md) | per-command request/response layouts, timing, data semantics |
+| [Hardware findings](docs/FINDINGS.md) | every measurement: speed, load, timing, frame gap… |
+| [`.rsc` project files](docs/RSC.md) | structure, teach → export, playback semantics |
+| [Software load limiting](docs/LOAD_LIMITING.md) | rationale, threshold selection, API |
+| [Safety & limits](docs/SAFETY.md) | dangerous commands, unsupported / unverified list |
+| [Testing](docs/TESTING.md) | unit tests, self-check, docs build |
+| [Test plan](docs/SERVO_TEST_PLAN.md) | graded test cases, acceptance thresholds |
+| [API reference](docs/api.md) | auto-generated from docstrings |
+
+Docs site: <https://lqx-code-sh.github.io/Romanbo-Python-SDK/>
 
 ## Project layout
 
