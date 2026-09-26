@@ -52,7 +52,8 @@ python3 -m romanbo --port /dev/ttyUSB0 play my.rsc --ids 8,10 --speed 15
 | 权限 | 一般无需设置 | 需要 `dialout` 组（否则 `PermissionError`） |
 | 共享性 | 打开即独占 | **默认可多进程同时打开** → 本库用 `exclusive=True`（`TIOCEXCL`）排他 |
 | 可能被抢占 | 其它上位机 / 串口助手 | 其它上位机 / ModemManager（`sudo systemctl stop ModemManager`） |
-| 定时精度 | `time.sleep` ≈ 15 ms 抖动 | 更好，步进逼近的角速度更准 |
+| 定时精度 | `time.sleep` ≈ 15 ms 抖动；`time.monotonic()` 在 CPython ≤ 3.12 粒度约 15.6 ms | 更好，步进逼近的角速度更准 |
+| 输出编码 | 输出被重定向时 stdout 用区域编码（cp1252/cp936），中文会崩 → CLI 已自动切 UTF-8 | 默认 UTF-8 |
 
 临时放开权限（重插 USB 后失效）：
 

@@ -1006,7 +1006,34 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _ensure_utf8_stdio() -> None:
+    """确保 stdout/stderr 能输出中文（Windows 管道下是区域编码）。
+
+    Windows 上输出被**重定向**时，Python 按区域编码（en-US 为 cp1252）写管道，
+    编码不了中文的 ``print`` 会抛 ``UnicodeEncodeError`` 直接中断命令——CI 里的
+    ``python -m romanbo selftest`` 曾因此在 windows-latest 上稳定失败
+    （基准向量名含"[协议推算]"）。
+
+    这里只在当前编码**真的表示不了中文**时才切换，避免影响用户的 locale 选择；
+    控制台场景 Python 已用 UTF-8（``_WindowsConsoleIO``），因此是 no-op。
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:                  # 已被替换成非 TextIOWrapper（测试捕获）
+            continue
+        try:
+            "中文".encode(getattr(stream, "encoding", None) or "utf-8")
+            continue                             # 已能表示中文，不动用户的设置
+        except (LookupError, UnicodeEncodeError):
+            pass
+        try:
+            reconfigure(encoding="utf-8")
+        except (ValueError, OSError):            # pragma: no cover - 罕见的环境限制
+            pass
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    _ensure_utf8_stdio()
     parser = build_parser()
     args = parser.parse_args(argv)
 

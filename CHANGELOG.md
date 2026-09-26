@@ -36,6 +36,10 @@
   并注明前置条件——仓库需先启用 Pages，且 `enablement` 不接受 `GITHUB_TOKEN`
 
 ### 修复
+- **CLI 输出编码**：Windows 上输出被重定向时 stdout 用区域编码（en-US 为 cp1252），
+  编码不了中文的 `print` 抛 `UnicodeEncodeError` 直接中断命令——`python -m romanbo
+  selftest` 因此在 windows-latest 上稳定失败（基准向量名含"[协议推算]"）。
+  现在 `cli.main()` 只在当前编码真的表示不了中文时才把 stdout/stderr 切到 UTF-8
 - `SerialTransport.write()` 的帧间隔守卫改用 `time.perf_counter()`：Windows 上
   `time.monotonic()` 在 CPython <= 3.12 走 `GetTickCount64()`（粒度约 15.6 ms），
   跨刻度时会误判"已过 15.6 ms"而**跳过节流**，真机上仍可能丢帧——即

@@ -52,6 +52,28 @@ class TestCliOfflineCommands(unittest.TestCase):
                     self.assertIn(needle, text, f"{platform} 分支缺少 {needle!r}")
 
 
+class TestStdioEncoding(unittest.TestCase):
+    """stdout 编码不足时 CLI 不能崩。
+
+    Windows 上输出被重定向（CI 的管道）时 Python 用区域编码，en-US 是 cp1252，
+    编码不了中文的 ``print`` 会抛 ``UnicodeEncodeError`` 中断命令。这里用
+    ``PYTHONIOENCODING`` 把子进程的 stdout 换成 cp1252 来复现，与真机一致——
+    修复前 ``selftest`` 会在 windows-latest 上稳定失败。
+    """
+
+    def test_selftest_survives_non_utf8_stdout(self) -> None:
+        import subprocess
+
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        env = dict(os.environ, PYTHONIOENCODING="cp1252")
+        proc = subprocess.run(
+            [sys.executable, "-m", "romanbo", "selftest"],
+            cwd=root, env=env, capture_output=True, text=True, errors="replace")
+        self.assertEqual(proc.returncode, 0,
+                         f"非 UTF-8 stdout 下命令中断：\n{proc.stderr[-600:]}")
+        self.assertIn("60", proc.stdout)          # 60 条向量全部跑完
+
+
 class TestCliPlayOptions(unittest.TestCase):
     def test_play_accepts_ids(self) -> None:
         args = cli.build_parser().parse_args(["play", "x.rsc", "--ids", "8,10"])
