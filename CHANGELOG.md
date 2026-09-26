@@ -11,6 +11,9 @@
   （mkdocstrings），`mkdocs build --strict` 已在 CI 中作为门禁
 - `docs/evidence/`：真机探针日志归档为可独立复核的原始证据，并附证据说明
 - `.github/workflows/docs.yml`：PR 校验 + 主分支自动部署到 GitHub Pages
+- `.github/workflows/release.yml`：推送 `v*` 标签即构建、校验、从 sdist 冒烟后
+  经 Trusted Publishing 发布到 PyPI 并创建 GitHub Release（配置见 `CONTRIBUTING.md`）
+- `README.en.md`：英文版项目说明，与中文版互相链接
 
 ### 变更
 - **docstring 规范化**：RST 指令（`.. note::` / `.. warning::` / `.. math::`）改为 Markdown 等价写法，
@@ -18,6 +21,11 @@
 - 文档站锚点改用 Unicode slugify，与 GitHub 的锚点规则保持一致（中文标题可正常跳转）
 - `docs/SERVO_SPEC.md` §7 明确与自动生成 API 参考的主从关系（以 docstring 为准）
 - `Servo.__all__` 补上 `LoadLimitExceeded`
+
+### 修复
+- `pyproject.toml`：`authors` 里不允许出现 `url` 字段（PEP 621），此前会导致
+  **`python -m build` 直接失败**——即发布流程不可用；现改为只保留 `name`，
+  仓库地址放到 `[project.urls]`。同时移除已弃用的 License 分类器（改由 `license` 声明）
 
 ### 变更（行为）
 - `RomanboRobot.capture()` 默认 **`retries=0`**（探测式）：对不存在的 ID 只等一次超时。

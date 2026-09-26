@@ -1,5 +1,7 @@
 # ROMANBO 舵机 / 整机控制库（Python SDK）
 
+[简体中文] | [English](README.en.md)
+
 [![CI](https://github.com/LQX-Code-SH/Romanbo-Python-SDK/actions/workflows/ci.yml/badge.svg)](https://github.com/LQX-Code-SH/Romanbo-Python-SDK/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.8%2B-blue)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -585,6 +587,7 @@ python -m mkdocs serve                         # 本地预览 http://127.0.0.1:8
 ```
 .
 ├── README.md                    本文件（项目级说明：安装/上手/命令行/API/限制）
+├── README.en.md                 英文版 README
 ├── LICENSE                      许可证（MIT）
 ├── CHANGELOG.md                 版本变更记录
 ├── CONTRIBUTING.md              贡献指南（开发约定 / 测试 / 危险改动）

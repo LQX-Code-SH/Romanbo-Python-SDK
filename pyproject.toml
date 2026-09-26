@@ -7,8 +7,13 @@ name = "romanbo"
 description = "ROMANBO 舵机 / 整机 RS485 控制库（Python SDK）"
 readme = "README.md"
 requires-python = ">=3.8"
+# 注意：这里刻意使用 `license` 的 TOML 表形式。PEP 639 推荐的 SPDX 字符串写法
+# （`license = "MIT"`）需要 setuptools >= 77，而 setuptools 77+ 已不支持
+# Python 3.8（3.8 最高只能装到 75.3.4）。若将来把 Python 下限提到 3.9+，
+# 可改成 SPDX 字符串并加 `license-files = ["LICENSE"]`，同时删除下方
+# 「许可证由 license 字段声明」的注释。构建时会出现一条弃用告警，属预期。
 license = { text = "MIT" }
-authors = [{ name = "LQX-Code-SH", url = "https://github.com/LQX-Code-SH" }]
+authors = [{ name = "LQX-Code-SH" }]
 keywords = ["romanbo", "servo", "rs485", "robotics", "sdk"]
 dependencies = ["pyserial>=3.5,<4.0"]
 dynamic = ["version"]
@@ -16,7 +21,7 @@ classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Intended Audience :: Education",
-    "License :: OSI Approved :: MIT License",
+    # 许可证由 `license` 字段声明（PEP 639 起不再使用 License 分类器）
     "Operating System :: OS Independent",
     "Operating System :: Microsoft :: Windows",
     "Operating System :: POSIX :: Linux",
