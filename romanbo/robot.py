@@ -448,12 +448,23 @@ class RomanboRobot:
                       id_offset=self.id_offset if id_offset is None else id_offset))
 
     def capture(self, ids: Optional[Iterable[int]] = None, *,
-                timeout: float = 0.2) -> Dict[int, int]:
-        """示教读取：批量回读各关节位置（ADC）。"""
+                timeout: float = 0.2, retries: int = 0) -> Dict[int, int]:
+        """示教读取：批量回读各关节位置（ADC）。
+
+        !!! note "为什么默认不重试"
+            批量回读时通常只有**部分**关节在线。若对每个不存在的 ID 都做
+            ``retries`` 次重试，每多一次就要多等一个 ``retry_delay``
+            （默认约 0.45 s）；例如 17 通道只接了 2 个舵机时，默认重试会让
+            整个回读多花约 13 s。因此本方法默认 ``retries=0``（单次超时即
+            跳过），与 `scan` 的探测语义一致；需要更强容错时显式传 ``retries=2``。
+
+        读不到的关节会被跳过，失败原因记录在 `last_error`。
+        """
         out: Dict[int, int] = {}
         for id_ in (list(ids) if ids is not None else self._known_ids()):
             try:
-                out[id_] = self.servo(id_).get_position(timeout=timeout)
+                out[id_] = self.servo(id_).get_position(timeout=timeout,
+                                                        retries=retries)
             except (TimeoutError, P.ProtocolError) as exc:
                 self.last_error = f"id={id_} 读取失败: {exc}"
         return out

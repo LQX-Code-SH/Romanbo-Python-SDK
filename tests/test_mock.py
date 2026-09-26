@@ -222,5 +222,52 @@ class TestMockEndToEnd(unittest.TestCase):
         self.assertEqual(J.mirror_map({1: 600}, [(1, 2)]), {1: 600, 2: 424})
 
 
+class TestCaptureRetries(unittest.TestCase):
+    """``capture`` 的探测式默认重试：缺失的 ID 不应拖慢整批回读。
+
+    背景：批量回读时通常只有部分关节在线；若对每个不存在的 ID 都重试，每次
+    还要多等一个 ``retry_delay``（真机默认约 0.45 s）。
+    """
+
+    def _robot(self) -> RomanboRobot:
+        mock = MockTransport(servo_ids=[8, 10])
+        mock.positions[8] = 512
+        mock.positions[10] = 512
+        robot = RomanboRobot(transport=mock, ack_timeout=0.02,
+                             retries=2, retry_delay=0.01).open()
+        self.addCleanup(robot.close)
+        return robot
+
+    @staticmethod
+    def _position_frames(mock: MockTransport, id_: int, since: int) -> list:
+        return [f for f in mock.sent[since:]
+                if f[2] == id_ and f[4] == P.ServoCmd.GET_POSITION]
+
+    def test_capture_does_not_retry_by_default(self) -> None:
+        robot = self._robot()
+        mock = robot.transport
+        before = len(mock.sent)
+        positions = robot.capture([8, 9, 10], timeout=0.02)
+        self.assertEqual(positions, {8: 512, 10: 512})
+        # ID 9 不在线：默认 retries=0 → 只发一帧
+        self.assertEqual(len(self._position_frames(mock, 9, before)), 1)
+
+    def test_capture_can_opt_in_to_retries(self) -> None:
+        robot = self._robot()
+        mock = robot.transport
+        before = len(mock.sent)
+        robot.capture([9], timeout=0.02, retries=2)
+        # 1 次 + 2 次重试
+        self.assertEqual(len(self._position_frames(mock, 9, before)), 3)
+
+    def test_get_position_honours_retries_argument(self) -> None:
+        robot = self._robot()
+        mock = robot.transport
+        before = len(mock.sent)
+        with self.assertRaises(TimeoutError):
+            robot.servo(9).get_position(timeout=0.02, retries=0)
+        self.assertEqual(len(self._position_frames(mock, 9, before)), 1)
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main(verbosity=2)

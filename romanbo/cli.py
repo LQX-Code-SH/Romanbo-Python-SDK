@@ -28,6 +28,8 @@ from .transport import MockTransport
 
 #: 软件限力中止时的退出码
 EXIT_LOAD_LIMIT = 4
+#: ``move --readback`` 未显式给 ``--settle`` 时，返回前等待到位的默认秒数
+DEFAULT_MOVE_SETTLE = 0.3
 #: 串口打不开（被占用 / 端口号不对）时的退出码
 EXIT_PORT = 5
 
@@ -226,11 +228,16 @@ def cmd_scan(robot, args) -> int:
 
 
 def cmd_read(robot, args) -> int:
+    """批量读取位置。
+
+    对**不存在的 ID** 只等一次超时（``retries=0``）：未指定 ``--ids`` 时默认
+    扫 1..17，若逐个重试，15 个空 ID 会让整个命令多花十几秒。
+    """
     ids = _parse_ids(args.ids) or list(range(1, 18))
     out: Dict[str, Dict[str, float]] = {}
     for id_ in ids:
         try:
-            adc = robot.servo(id_).get_position(timeout=args.timeout)
+            adc = robot.servo(id_).get_position(timeout=args.timeout, retries=0)
             out[str(id_)] = {"adc": adc, "angle": round(J.adc_to_angle(adc), 2)}
         except (TimeoutError, P.ProtocolError) as exc:
             out[str(id_)] = {"error": str(exc)}
@@ -277,6 +284,12 @@ def cmd_teach(robot, args) -> int:
 
 
 def cmd_move(robot, args) -> int:
+    """多关节同步运动。
+
+    ``--speed`` 走**步进逼近**，函数返回时最后一拍刚下发完，舵机仍在运动；
+    因此直接回读会读到中间值。``--readback`` 会在返回前等待 ``--settle``
+    秒（默认 0.3 s）再回读各关节实际位置与误差，使输出可直接作为判定依据。
+    """
     targets = _parse_targets(args.targets)
     if args.torque is not None:
         on = args.torque == "on"
@@ -295,12 +308,27 @@ def cmd_move(robot, args) -> int:
                    sync_id=None if args.per_id_sync else P.BROADCAST_ID)
     except LoadLimitExceeded as exc:
         return _abort_on_load(exc, args)
-    if args.speed is not None:
-        print(f"已下发 {len(targets)} 个关节，角速度 {args.speed:g} °/s"
-              f"（峰值负荷 {robot.last_peak_load}）")
-    else:
-        print(f"已下发 {len(targets)} 个关节，周期 {args.period} ms，"
-              f"方式 {args.mode}")
+
+    settle = args.settle
+    if settle is None:
+        settle = DEFAULT_MOVE_SETTLE if args.readback else 0.0
+    if settle > 0:
+        time.sleep(settle)
+
+    result: Dict[str, object] = {
+        "targets": {str(k): v for k, v in sorted(targets.items())},
+        "speed_dps": args.speed,
+        "period_ms": None if args.speed is not None else args.period,
+        "mode": args.mode,
+        "settle_s": round(float(settle), 3),
+        "peak_load": robot.last_peak_load,
+    }
+    if args.readback:
+        actual = robot.capture(list(targets), timeout=args.timeout)
+        result["readback"] = {str(k): v for k, v in sorted(actual.items())}
+        result["error"] = {str(k): actual[k] - targets[k]
+                           for k in sorted(actual) if k in targets}
+    _emit(result, args)
     return 0
 
 
@@ -811,6 +839,11 @@ def build_parser() -> argparse.ArgumentParser:
                    help="仅 mode=next 有效：不发送同步触发")
     p.add_argument("--per-id-sync", action="store_true",
                    help="仅 mode=next 有效：逐 ID 触发同步")
+    p.add_argument("--settle", type=float, default=None,
+                   help=f"下发后等待到位再返回的秒数"
+                        f"（默认：--readback 时 {DEFAULT_MOVE_SETTLE}，否则不等待）")
+    p.add_argument("--readback", action="store_true",
+                   help="返回前回读各关节实际位置，并输出与目标的误差")
     p.set_defaults(func=cmd_move)
 
     p = sub.add_parser("jog", help="单关节点动（可按 ADC 或角度）")

@@ -600,7 +600,8 @@ class Servo:
 
     # -- 读回 --------------------------------------------------------------- #
 
-    def get_position(self, *, timeout: Optional[float] = None) -> int:
+    def get_position(self, *, timeout: Optional[float] = None,
+                     retries: Optional[int] = None) -> int:
         """读取当前位置（ADC 0..1023）。
 
         实测回包（ID=10，2026-09-25）：
@@ -608,8 +609,13 @@ class Servo:
             请求  FF FF 0A 06 14 DE
             应答  FF FF 0A 09 94 00 01 FE 5C   → 数据段 00 01 FE
                   前导 00 为状态字节，数值 = 0x01FE = 510
+
+        :param retries: 超时后的重试次数。``None`` 用实例默认值；``0`` 表示
+            单次超时即失败——批量探测时用（对不存在的 ID，每次重试还要多等
+            ``retry_delay``，默认约 0.45 s）。见 `RomanboRobot.capture`。
         """
-        resp = self._send(P.build_get_position(self._id), wait=True, timeout=timeout)
+        resp = self._send(P.build_get_position(self._id), wait=True,
+                          timeout=timeout, retries=retries)
         return self._decode_position(resp.data)
 
     def get_position_raw(self, *, timeout: Optional[float] = None) -> P.Response:

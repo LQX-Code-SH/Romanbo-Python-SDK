@@ -723,7 +723,7 @@ PID 三字节（P/I/D 各 0..255）是**固件内位置环的唯一可调参数*
 |---|---|
 | `connect(port, mock=False, handshake=True, **kw)` / `open()` / `close()` | 连接（`mock=True` 离线模拟） |
 | `scan(start=1, end=32, timeout=0.15, quarantine=0.4)` | 扫描在线 ID（**已处理静默期**） |
-| `capture(ids=None, timeout=0.2)` / `read_positions(...)` | 示教批量回读 |
+| `capture(ids=None, timeout=0.2, retries=0)` / `read_positions(...)` | 示教批量回读；**默认不重试**（缺失的 ID 只等一次超时，避免整批回读被 `retry_delay` 拖慢） |
 | `move(positions, period_ms=500, torque=1, relative=0, mode="position", speed_dps=None, start=None, step_interval_ms=None, max_load=None, load_check_every=1, sync=True, sync_id=254, wait=False, led=None)` | 多关节运动（位置模式 / 步进角速度） |
 | `move_frame(frame, period_ms=None, torque=1, mode="position", sync=True, id_offset=None)` | 执行一个 `.rsc` 帧 |
 | `play(frames, loop=False, speed_dps=None, speed_scale=1.0, torque=1, mode="position", id_offset=None, wait_frame=True, start_positions=None, step_interval_ms=None, max_load=None, load_check_every=1, on_frame=None, stop_event=None)` | 播放关键帧序列 |

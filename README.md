@@ -139,7 +139,7 @@ python -m romanbo info examples/data/demo.rsc
 | `jog` | `--id --degrees 度 \| --delta ADC`，速度用 `--speed 度/秒` 或 `--period ms`，可加 `--max-load` |
 | `angle` | `--id --degrees`（绝对角度，中点 512 = 0°），速度同上 |
 | `sweep` | `--id --degrees/--low/--high --cycles`，速度同上；`--no-readback --no-return --loop` |
-| `move` | `--targets 8:600,10:480`；`--speed`（角速度）/`--period`；`--max-load`；`--no-capture` |
+| `move` | `--targets 8:600,10:480`；`--speed`（角速度）/`--period`；`--max-load`；`--no-capture`；`--settle 秒`（下发后等到位再返回，`--readback` 时默认 0.3）；`--readback`（回读实际位置与误差） |
 | `torque` | `on\|off` `--ids`：力矩使能开关 |
 | `led` | `--id/--ids --value N` 或 `--color 1,0,1` |
 | `pid` | `--id --p --i --d [--nosave]`：写入后**回读确认**，失败退出码 1 |
@@ -175,6 +175,7 @@ with RomanboRobot("COM3") as robot:          # 或 connect("COM3", mock=True)
         print(exc.as_dict())                 # {id, load, limit, step, position}
 
     robot.move({8: 600, 10: 480}, speed_dps=60, start=robot.capture([8, 10]))
+    # capture 默认 retries=0（探测式）：缺失的 ID 只等一次超时，不会拖慢整批回读
     robot.play_rsc("examples/data/demo.rsc", speed_dps=60, max_load=60)
     print(s.read_config().as_dict())          # 含 load / acceleration
 ```

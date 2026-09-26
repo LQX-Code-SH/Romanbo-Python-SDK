@@ -19,8 +19,13 @@
 - `docs/SERVO_SPEC.md` §7 明确与自动生成 API 参考的主从关系（以 docstring 为准）
 - `Servo.__all__` 补上 `LoadLimitExceeded`
 
-### 计划中
-- 只读探测类调用的默认重试策略优化（`capture()`）
+### 变更（行为）
+- `RomanboRobot.capture()` 默认 **`retries=0`**（探测式）：对不存在的 ID 只等一次超时。
+  此前默认重试 2 次，17 通道只接 2 个舵机时整批回读会多花约 13 s。
+  需要更强容错时显式传 `retries=2`。`Servo.get_position()` 相应新增 `retries=` 参数。
+- `romanbo move` 新增 `--settle 秒` 与 `--readback`：`--speed` 是步进逼近，函数返回时
+  最后一拍刚下发完、舵机仍在运动，此前直接回读会读到中间值；`--readback` 现会等待
+  到位（默认 0.3 s）后回读实际位置并输出误差。`read` 改为单次超时（`retries=0`）。
 
 ## [1.0.0] - 2026-09-26
 
