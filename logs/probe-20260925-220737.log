@@ -1,0 +1,36 @@
+# 端口 COM3 @ 115200 8N1  日志 D:\Program Files\Roborobo\Romanbo\python\logs\probe-20260925-220737.log
+# 串口已打开: COM3
+== 扫描 ID 1..16 ==
+TX  Status(id=1)             FF FF 01 06 05 F6
+RX  <超时无响应>
+TX  Status(id=2)             FF FF 02 06 05 F5
+RX  <超时无响应>
+TX  Status(id=3)             FF FF 03 06 05 F4
+RX  <超时无响应>
+TX  Status(id=4)             FF FF 04 06 05 F3
+RX  <超时无响应>
+TX  Status(id=5)             FF FF 05 06 05 F2
+RX  <超时无响应>
+TX  Status(id=6)             FF FF 06 06 05 F1
+RX  <超时无响应>
+TX  Status(id=7)             FF FF 07 06 05 F0
+RX  <超时无响应>
+TX  Status(id=8)             FF FF 08 06 05 EF
+RX  <超时无响应>
+TX  Status(id=9)             FF FF 09 06 05 EE
+RX  <超时无响应>
+TX  Status(id=10)            FF FF 0A 06 05 ED
+RX  <超时无响应>
+TX  Status(id=11)            FF FF 0B 06 05 EC
+RX  <超时无响应>
+TX  Status(id=12)            FF FF 0C 06 05 EB
+RX  <超时无响应>
+TX  Status(id=13)            FF FF 0D 06 05 EA
+RX  <超时无响应>
+TX  Status(id=14)            FF FF 0E 06 05 E9
+RX  <超时无响应>
+TX  Status(id=15)            FF FF 0F 06 05 E8
+RX  <超时无响应>
+TX  Status(id=16)            FF FF 10 06 05 E7
+RX  <超时无响应>
+== 扫描结果: 无响应 ==

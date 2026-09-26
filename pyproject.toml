@@ -1,0 +1,74 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "romanbo"
+description = "ROMANBO 舵机 / 整机 RS485 控制库（Python SDK）"
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [{ name = "LQX-Code-SH", url = "https://github.com/LQX-Code-SH" }]
+keywords = ["romanbo", "servo", "rs485", "robotics", "sdk"]
+dependencies = ["pyserial>=3.5,<4.0"]
+dynamic = ["version"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Education",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
+    "Topic :: Software Development :: Embedded Systems",
+    "Topic :: System :: Hardware :: Hardware Drivers",
+]
+
+[project.urls]
+Homepage = "https://github.com/LQX-Code-SH/romanbo"
+Repository = "https://github.com/LQX-Code-SH/romanbo"
+Issues = "https://github.com/LQX-Code-SH/romanbo/issues"
+Changelog = "https://github.com/LQX-Code-SH/romanbo/blob/main/CHANGELOG.md"
+
+[project.optional-dependencies]
+dev = ["build>=1.0", "ruff>=0.4", "mypy>=1.8"]
+
+[project.scripts]
+romanbo = "romanbo.cli:run"
+
+[tool.setuptools]
+packages = ["romanbo"]
+
+[tool.setuptools.package-data]
+romanbo = ["py.typed"]
+
+[tool.setuptools.dynamic]
+version = { attr = "romanbo.__version__" }
+
+# --------------------------------------------------------------------------- #
+# 工具配置（仅静态检查，不改变运行期行为）
+# --------------------------------------------------------------------------- #
+
+[tool.ruff]
+line-length = 100
+target-version = "py38"
+exclude = [".venv", "build", "dist"]
+
+# 只启用「一定是错误」的规则，避免对既有代码风格做大规模改动
+[tool.ruff.lint]
+select = ["E9", "F63", "F7", "F82"]
+
+[tool.mypy]
+python_version = "3.8"
+ignore_missing_imports = true
+warn_unused_ignores = true

@@ -1,0 +1,6 @@
+# 端口 COM3 @ 115200 8N1  日志 D:\Program Files\Roborobo\Romanbo\python\logs\probe-20260925-221626.log
+# 串口已打开: COM3
+TX  #1 cmd=0x0F id=10        FF FF 0A 06 0F E3
+RX  <超时无响应>
+TX  #2 cmd=0x0F id=10        FF FF 0A 06 0F E3
+RX  <超时无响应>

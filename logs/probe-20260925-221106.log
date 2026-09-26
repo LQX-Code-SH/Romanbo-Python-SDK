@@ -1,0 +1,5 @@
+# 端口 COM3 @ 115200 8N1  日志 D:\Program Files\Roborobo\Romanbo\python\logs\probe-20260925-221106.log
+# 串口已打开: COM3
+== 纯监听 3 秒（不发任何数据）==
+RX  <超时无响应>
+== 监听结束 ==

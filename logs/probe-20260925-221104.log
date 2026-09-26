@@ -1,0 +1,20 @@
+# 端口 COM3 @ 115200 8N1  日志 D:\Program Files\Roborobo\Romanbo\python\logs\probe-20260925-221104.log
+# 串口已打开: COM3
+== [A] 控制器板探测（ID=0，GetModel/GetVersion 走 LEN=0 旧格式）==
+TX  GetModel(控制器)            FF FF 00 00 01 01
+RX  FF FF 00 02 81 00 70 0F
+    -> id=0 cmd=0x81 data=00 70
+TX  GetVersion(控制器)          FF FF 00 00 02 00
+RX  FF FF 00 02 82 08 01 75
+    -> id=0 cmd=0x82 data=08 01
+== [B] 舵机探测矩阵 ==
+-- ID 1
+TX  Status         0x05      FF FF 01 06 05 F6
+RX  <超时无响应>
+TX  GetMotor       0x16      FF FF 01 06 16 E5
+RX  <超时无响应>
+TX  GetPosition    0x14      FF FF 01 06 14 E7
+RX  <超时无响应>
+TX  GetModel(严格) 0x01        FF FF 01 06 01 FA
+RX  <超时无响应>
+TX  GetVersion(严格)0x02       FF FF 01 06 02 F9

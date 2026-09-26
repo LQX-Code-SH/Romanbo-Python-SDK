@@ -1,0 +1,43 @@
+# 端口 COM3 @ 115200 8N1  日志 D:\Program Files\Roborobo\Romanbo\python\logs\probe-20260925-221313.log
+# 串口已打开: COM3
+== 逐条查询 ID 10（原样回包，用于标定解码）==
+TX  GetModel       (0x01)    FF FF 00 00 01 01
+RX  FF FF 00 02 81 00 70 0F
+    -> id=0 cmd=0x81 data=00 70
+TX  GetVersion     (0x02)    FF FF 00 00 02 00
+RX  FF FF 00 02 82 08 01 75
+    -> id=0 cmd=0x82 data=08 01
+TX  Status         (0x05)    FF FF 0A 06 05 ED
+RX  FF FF 0A 07 85 00 6C
+    -> id=10 cmd=0x85 data=00
+TX  GetMotor       (0x16)    FF FF 0A 06 16 DC
+RX  FF FF 0A 09 96 00 00 00 59
+    -> id=10 cmd=0x96 data=00 00 00
+TX  GetPosition    (0x14)    FF FF 0A 06 14 DE
+RX  FF FF 0A 09 94 00 01 FE 5C
+    -> id=10 cmd=0x94 data=00 01 FE
+TX  GetPID         (0x12)    FF FF 0A 06 12 E0
+RX  FF FF 0A 0A 92 00 32 00 05 25
+    -> id=10 cmd=0x92 data=00 32 00 05
+TX  GetTemp        (0x13)    FF FF 0A 06 13 DF
+RX  FF FF 0A 08 93 00 24 39
+    -> id=10 cmd=0x93 data=00 24
+TX  GetMargin      (0x17)    FF FF 0A 06 17 DB
+RX  <超时无响应>
+TX  GetCurrentLimit(0x18)    FF FF 0A 06 18 DA
+RX  FF FF 0A 08 98 00 00 58
+    -> id=10 cmd=0x98 data=00 00
+TX  GetAccelerate  (0x19)    FF FF 0A 06 19 D9
+RX  <超时无响应>
+TX  GetPositionLim (0x1A)    FF FF 0A 06 1A D8
+RX  FF FF 0A 0B 9A 00 00 01 03 FF 50
+    -> id=10 cmd=0x9A data=00 00 01 03 FF
+TX  GetMotionPeriod(0x0F)    FF FF 0A 06 0F E3
+RX  <超时无响应>
+TX  GetCalibration (0x15)    FF FF 0A 06 15 DD
+RX  FF FF 0A 08 95 00 74 E7
+    -> id=10 cmd=0x95 data=00 74
+TX  GetFactoryTest (0x7B)    FF FF 0A 06 7B 77
+RX  FF FF 0A 09 FB 00 06 0E E0
+    -> id=10 cmd=0xFB data=00 06 0E
+== 查询结束；请把上面的 RX 行发回用于解码定标 ==
