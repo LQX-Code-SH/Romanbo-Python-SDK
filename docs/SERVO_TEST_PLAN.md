@@ -699,11 +699,11 @@ python3 -m romanbo --port $PORT param current-limit --id 8 --value 200
   def write(self, frame: bytes) -> None:
       if not self.is_open:
           raise RuntimeError(f"串口未打开: {self._port}")
-      wait = P.MIN_FRAME_GAP - (time.monotonic() - self._last_write)
+      wait = P.MIN_FRAME_GAP - (time.perf_counter() - self._last_write)
       if wait > 0:
           time.sleep(wait)
       self._ser.write(frame)
-      self._last_write = time.monotonic()
+      self._last_write = time.perf_counter()
   ```
   `open()` 时把 `_last_write` 归零，保证**首帧不被延迟**。
 - **回归判定**（2026-09-26 全部通过）：
@@ -712,6 +712,16 @@ python3 -m romanbo --port $PORT param current-limit --id 8 --value 200
   - `.rsc` 播放路径 ✅ 8=559 / 10=460（目标 560/460）
   - 新增单元测试 `tests/test_standalone.py::TestFrameGap`（3 项）✅
   - 既有 129 项单元测试 + 黄金向量 60/60 无回归
+- **修复补正（2026-09-27，跨平台）**：上面这套节流最初用 `time.monotonic()` 计时，
+  在 **Windows + CPython <= 3.12** 上不可靠——该时钟走 `GetTickCount64()`，粒度约为
+  15.6 ms（3.13 起才改用 `QueryPerformanceCounter()`），同刻度内读数差恒为 0，
+  跨刻度时又会误判"已过 15.6 ms"而**跳过节流**（本地反事实验证：真实间隔 0.00 ms，
+  即真机上仍会丢帧）。现改用 `time.perf_counter()`；`TestFrameGap` 同时改为
+  **注入时钟**判定"节流决策"，不再读真实秒表，并保留一个宽松的真实时钟冒烟
+  用例（现共 5 项），因此 windows-latest / macos-latest 上不再有时序波动。
+- **另一处跨平台回归（同日）**：`tests/test_cli.py` 的串口提示用例断言了写死的
+  `"USB"`，而 macOS 分支写的是 `/dev/tty.usbserial-XXXX` → 只在 macOS 上失败；
+  现改为逐平台（linux / darwin / win32）校验各自分支。
 - **已同步文档**：`README.md` 新增 §6.8 并修正 §6.2 的"相邻帧仅差 ~0.8 ms"；
   `SERVO_SPEC.md` §3.5 与 §7.3 常量表（新增 `MIN_FRAME_GAP`）。
 

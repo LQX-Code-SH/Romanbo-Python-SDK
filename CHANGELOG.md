@@ -26,8 +26,25 @@
   [协议速览](docs/PROTOCOL.md)、[真机实测结论](docs/FINDINGS.md)、[工程文件](docs/RSC.md)、
   [软件限力](docs/LOAD_LIMITING.md)、[测试与自检](docs/TESTING.md)、[安全与已知限制](docs/SAFETY.md)
   八个页面；`docs/README.md` 与文档站导航按「入门 / 协议与硬件 / 接口与数据 / 测试 / 安全」重组
+- **CI action 升到 Node 24 系列**（`checkout` v7、`setup-python` v7、`upload-artifact` v7、
+  `download-artifact` v8、`configure-pages` v6、`upload-pages-artifact` v5、`deploy-pages` v5、
+  `action-gh-release` v3），消除 "target Node.js 20 but are being forced to run on Node.js 24"
+  弃用告警；已逐个核对跨主版本发布说明（`download-artifact` v5 的破坏性变更只影响"按 ID 下载
+  单个产物"，本仓库按 `name` 下载；`upload-pages-artifact` v4+ 默认排除点文件，而本站产物
+  `site/` 无点文件）
+- `.github/workflows/docs.yml`：`configure-pages` 仅在非 PR 事件执行（PR 令牌无 Pages 写权限），
+  并注明前置条件——仓库需先启用 Pages，且 `enablement` 不接受 `GITHUB_TOKEN`
 
 ### 修复
+- `SerialTransport.write()` 的帧间隔守卫改用 `time.perf_counter()`：Windows 上
+  `time.monotonic()` 在 CPython <= 3.12 走 `GetTickCount64()`（粒度约 15.6 ms），
+  跨刻度时会误判"已过 15.6 ms"而**跳过节流**，真机上仍可能丢帧——即
+  `MIN_FRAME_GAP` 本要避免的"多关节只有第一个生效"（本地反事实复现：真实间隔 0.00 ms）
+- `tests/test_standalone.py::TestFrameGap` 改为**注入时钟**判定"节流决策"，
+  不再读真实秒表：原实现用 `time.monotonic()` 打点，在 windows-latest /
+  Python 3.11 上恒读到 0.0 ms，是 CI 长期红灯的原因之一
+- `tests/test_cli.py` 的串口提示用例断言了写死的 `"USB"`，而 macOS 分支文案是
+  `/dev/tty.usbserial-XXXX` → 只在 macOS 上失败；现改为逐平台校验各自分支
 - `pyproject.toml`：`authors` 里不允许出现 `url` 字段（PEP 621），此前会导致
   **`python -m build` 直接失败**——即发布流程不可用；现改为只保留 `name`，
   仓库地址放到 `[project.urls]`。同时移除已弃用的 License 分类器（改由 `license` 声明）

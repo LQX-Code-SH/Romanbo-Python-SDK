@@ -26,7 +26,30 @@ class TestCliOfflineCommands(unittest.TestCase):
         text = cli._port_hint("COM3", PermissionError("拒绝访问。"))
         self.assertIn("COM3", text)
         self.assertIn("ports", text)          # 指向诊断命令
-        self.assertIn("USB", text)            # 拔插适配器的建议
+
+    def test_port_hint_covers_every_platform(self) -> None:
+        """三个平台分支都要覆盖：端口名形态不同，断言不能写死单个平台的字样。
+
+        原先这里断言 ``"USB" in text``（想验证"拔插适配器"的建议）——Windows/Linux
+        的文案恰好含 ``USB``，而 macOS 分支只写 ``/dev/tty.usbserial-XXXX``，
+        于是只在 macOS 上失败。
+        """
+        from unittest import mock
+
+        exc = PermissionError("拒绝访问。")
+        cases = (
+            ("linux", "/dev/ttyUSB0", "dialout"),
+            ("darwin", "/dev/tty.usbserial-XXXX", "lsof"),
+            ("win32", "拔插", "USB"),
+        )
+        for platform, *expected in cases:
+            with self.subTest(platform=platform):
+                with mock.patch.object(sys, "platform", platform):
+                    text = cli._port_hint("COM3", exc)
+                self.assertIn("COM3", text)
+                self.assertIn("python -m romanbo ports", text)
+                for needle in expected:
+                    self.assertIn(needle, text, f"{platform} 分支缺少 {needle!r}")
 
 
 class TestCliPlayOptions(unittest.TestCase):

@@ -155,5 +155,10 @@
 （而不是在每个调用点各自 `sleep`），因此 `move` / `play` 的多关节路径自动修复；
 单帧命令（GET 类）本来就等回包，不受影响。
 
+计时必须用 `time.perf_counter()`：Windows 上 `time.monotonic()` 在 CPython <= 3.12
+走 `GetTickCount64()`（粒度约 15.6 ms，3.13 起才改为 `QueryPerformanceCounter()`）——
+同刻度内读数差恒为 0，跨刻度时又会误判「已过 15.6 ms」而**跳过节流**，
+静默丢帧换个形式又回来了（本地反事实复现：真实间隔 0.00 ms）。
+
 单元回归见 `tests/test_standalone.py::TestFrameGap`，
 整机回归见[测试方案](SERVO_TEST_PLAN.md) L4-01 / L4-02 / L7-01。

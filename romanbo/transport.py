@@ -65,7 +65,7 @@ class SerialTransport(Transport):
         self._read_timeout = read_timeout
         self._write_timeout = write_timeout
         self._ser = None
-        #: 上一帧写完的时刻（monotonic）；用于强制 ``P.MIN_FRAME_GAP`` 帧间隔
+        #: 上一帧写完的时刻（高精度单调时钟）；用于强制 ``P.MIN_FRAME_GAP`` 帧间隔
         self._last_write = 0.0
 
     def open(self) -> None:
@@ -117,14 +117,23 @@ class SerialTransport(Transport):
             间隔 >= 2 ms 时两帧均正常。多关节动作是逐关节连发，若不在写口兜底，
             ``move`` / ``play`` 会出现"只有第一个关节生效"——因此这里统一节流，
             而不是在每个调用点各自 ``sleep``。
+
+        !!! note
+            计时用 ``time.perf_counter()`` 而**不是** ``time.monotonic()``：Windows 上
+            ``monotonic()`` 在 CPython <= 3.12 走 ``GetTickCount64()``，精度受系统
+            计时器增量限制（典型约 15.6 ms）——2 ms 的间隔根本量不出来，跨刻度时
+            还会误判"已经过了 15.6 ms"而跳过节流，真机上就可能丢帧（3.13 起才改用
+            ``QueryPerformanceCounter()``）。本库支持 3.8+，所以统一用
+            ``perf_counter()``（Windows 走 QPC、Linux 走 ``CLOCK_MONOTONIC``、
+            macOS 走 ``mach_absolute_time``），三平台都能正确度量。
         """
         if not self.is_open:
             raise RuntimeError(f"串口未打开: {self._port}")
-        wait = P.MIN_FRAME_GAP - (time.monotonic() - self._last_write)
+        wait = P.MIN_FRAME_GAP - (time.perf_counter() - self._last_write)
         if wait > 0:
             time.sleep(wait)
         self._ser.write(frame)
-        self._last_write = time.monotonic()
+        self._last_write = time.perf_counter()
 
     def read_available(self, timeout: float) -> bytes:
         if not self.is_open:

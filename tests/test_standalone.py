@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import subprocess
 import sys
@@ -170,6 +171,13 @@ class TestFrameGap(unittest.TestCase):
     丢弃**（交换 ID 顺序后被丢的永远是第二帧），间隔 >= 2 ms 时两帧都正常。
     多关节下发靠 :meth:`SerialTransport.write` 在写口兜底，因此这里用假串口
     验证节流真的生效、且没有把间隔设得过大。
+
+    !!! note
+        判定**不读真实秒表**。Windows 上 ``time.monotonic()`` 在 CPython <= 3.12
+        走 ``GetTickCount64()``（系统计时器增量，典型约 15.6 ms），拿它量 2 ms 间隔
+        只会读到 0.0 或 15.6——本测试就曾在 windows-latest / Python 3.11 上因此失败。
+        故这里注入可控时钟，直接断言"节流决策"，任何平台都确定性成立；另留一个
+        真实时钟的冒烟用例（只校验宽松下界），防止"注入时钟过了但节流没接上"。
     """
 
     @staticmethod
@@ -181,7 +189,8 @@ class TestFrameGap(unittest.TestCase):
                 pass
 
             def write(self, frame) -> None:
-                stamps.append(time.monotonic())
+                # 打点必须用高精度时钟：Windows 的 monotonic() 量不出 2 ms
+                stamps.append(time.perf_counter())
 
             def __getattr__(self, name):                     # dtr/rts/flush…
                 return lambda *args, **kwargs: None
@@ -192,7 +201,76 @@ class TestFrameGap(unittest.TestCase):
 
         return mock.patch.dict(sys.modules, {"serial": _FakeSerial()})
 
-    def test_two_consecutive_writes_are_separated(self) -> None:
+    @staticmethod
+    @contextlib.contextmanager
+    def _fake_clock(start: float = 1000.0):
+        """注入可控时钟：``perf_counter()`` 手动推进，``sleep()`` 只记录不真睡。"""
+        from unittest import mock
+
+        state = {"now": start, "sleeps": []}
+
+        def perf_counter() -> float:
+            return state["now"]
+
+        def sleep(seconds: float) -> None:
+            state["sleeps"].append(seconds)
+            state["now"] += seconds          # 睡多久时钟就走多久
+
+        with mock.patch.multiple(time, perf_counter=perf_counter, sleep=sleep):
+            yield state
+
+    def test_first_write_is_not_delayed(self) -> None:
+        from romanbo.transport import SerialTransport
+
+        stamps: list[float] = []
+        with self._install_fake_serial(stamps), self._fake_clock() as clock:
+            transport = SerialTransport("/dev/ttyUSB0", 115200)
+            transport.open()
+            transport.write(b"\xFF\xFF\x01\x06\x05\xF6")
+            transport.close()
+        # 打开端口后的第一帧不应凭空等待
+        self.assertEqual(len(stamps), 1)
+        self.assertEqual(clock["sleeps"], [])
+
+    def test_second_write_waits_the_remaining_gap(self) -> None:
+        from romanbo import protocol as P
+        from romanbo.transport import SerialTransport
+
+        stamps: list[float] = []
+        with self._install_fake_serial(stamps), self._fake_clock() as clock:
+            transport = SerialTransport("/dev/ttyUSB0", 115200)
+            transport.open()
+            try:
+                transport.write(b"\xFF\xFF\x01\x06\x05\xF6")     # t = 1000.0
+                clock["now"] += 0.0005                            # 只过了 0.5 ms
+                transport.write(b"\xFF\xFF\x01\x06\x05\xF6")
+            finally:
+                transport.close()
+
+        self.assertEqual(len(stamps), 2)
+        self.assertEqual(len(clock["sleeps"]), 1, "第二帧没有等到最小间隔")
+        self.assertAlmostEqual(clock["sleeps"][0], P.MIN_FRAME_GAP - 0.0005,
+                               places=6)
+
+    def test_no_wait_when_the_gap_is_already_elapsed(self) -> None:
+        from romanbo.transport import SerialTransport
+
+        stamps: list[float] = []
+        with self._install_fake_serial(stamps), self._fake_clock() as clock:
+            transport = SerialTransport("/dev/ttyUSB0", 115200)
+            transport.open()
+            try:
+                transport.write(b"\xFF\xFF\x01\x06\x05\xF6")     # t = 1000.0
+                clock["now"] += 0.005                             # 已过 5 ms
+                transport.write(b"\xFF\xFF\x01\x06\x05\xF6")
+            finally:
+                transport.close()
+
+        self.assertEqual(len(stamps), 2)
+        self.assertEqual(clock["sleeps"], [], "间隔已够时不应再等待")
+
+    def test_real_clock_gap_is_enforced(self) -> None:
+        """真实时钟冒烟：只校验宽松窗口，避开各平台时钟精度与调度抖动。"""
         from romanbo import protocol as P
         from romanbo.transport import SerialTransport
 
@@ -206,29 +284,12 @@ class TestFrameGap(unittest.TestCase):
             finally:
                 transport.close()
 
-        self.assertEqual(len(stamps), 3)
         gaps = [b - a for a, b in zip(stamps, stamps[1:])]
+        self.assertEqual(len(gaps), 2)
         for gap in gaps:
-            # 允许调度抖动，但必须接近常量（>= 90%）
-            self.assertGreaterEqual(gap, P.MIN_FRAME_GAP * 0.9,
-                                    f"帧间隔 {gap * 1000:.2f} ms 小于下限")
-            # 也不能明显超过：否则 17 关节会被拖慢
-            self.assertLess(gap, P.MIN_FRAME_GAP * 8,
-                            f"帧间隔 {gap * 1000:.2f} ms 过大")
-
-    def test_first_write_is_not_delayed(self) -> None:
-        from romanbo.transport import SerialTransport
-
-        stamps: list[float] = []
-        with self._install_fake_serial(stamps):
-            transport = SerialTransport("/dev/ttyUSB0", 115200)
-            transport.open()
-            started = time.monotonic()
-            transport.write(b"\xFF\xFF\x01\x06\x05\xF6")
-            elapsed = time.monotonic() - started
-            transport.close()
-        # 打开端口后的第一帧不应凭空等待 2 ms
-        self.assertLess(elapsed, 0.001)
+            self.assertGreaterEqual(gap, P.MIN_FRAME_GAP * 0.5,
+                                    f"帧间隔 {gap * 1000:.2f} ms 过小")
+            self.assertLess(gap, 0.05, f"帧间隔 {gap * 1000:.2f} ms 过大")
 
     def test_gap_constant_matches_measurement(self) -> None:
         from romanbo import protocol as P
