@@ -1,0 +1,13 @@
+# sdist 必须自带这些文件，否则 `.github/workflows/release.yml` 的
+# 「校验元数据与产物内容」会失败（它会断言 sdist 含 README.md / LICENSE /
+# CHANGELOG.md / mkdocs.yml）。2026-09-27 首次发版才发现缺 MANIFEST.in——
+# 此前该工作流从未跑过。
+include LICENSE
+include README.md
+include README.en.md
+include CHANGELOG.md
+include CONTRIBUTING.md
+include mkdocs.yml
+
+# 源码包应能直接构建文档站（mkdocs.yml 引用的就是这些页面）
+recursive-include docs *.md
