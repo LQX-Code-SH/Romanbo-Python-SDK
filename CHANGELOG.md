@@ -7,6 +7,10 @@
 ## [Unreleased]
 
 ### 修复
+- `docs/RELEASING.md` §1.2 把 **Required reviewers 明确写成可选项**，并给出两种模式的对照
+  （不加 = 全自动发布，适合单人仓库；加了 = 每次需人工 Approve）。原文写"建议勾选"容易让人
+  以为不做就差点什么；同时说明 `pypi` 环境一般**不用手动建**（工作流引用时会自动创建，
+  手动建会报 `Name has already been taken`）
 - **文档里的用例总数不再靠记性**（`tests/test_doc_counts.py`）：一天之内这个数字在 README 与
   `docs/TESTING.md` 里过期了三回（188 → 201 → 236 → 237），现在直接数出来对比——不一致就红，
   而历史记录（`TEST_REPORTS.md` 等）写的是当时的数字，**不**参与同步

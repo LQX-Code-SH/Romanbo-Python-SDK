@@ -48,13 +48,29 @@
     PyPI 上已有 `romanbo` 时不能用 pending publisher，改为：项目页 →
     **Manage** → **Publishing** → **Add a new publisher**，字段同上。
 
-### 1.2 GitHub 侧：建 environment
+### 1.2 GitHub 侧：environment `pypi`
 
-1. 仓库 → **Settings** → 左栏 **Environments** → **New environment**
-2. 名字填 `pypi`（必须与 §1.1 的 Environment name 完全一致）
-3. 建议勾选 **Required reviewers** 并选上自己：发布前会停下来等你在 Actions 页面点
-   Approve，防误发
-4. （可选）**Deployment branches and tags** 选 `Selected branches and tags`，只放行 `v*`
+**通常不用手动建**：工作流里声明了 `environment: {name: pypi}`，只要有一次作业引用它，
+GitHub 就会**自动创建** ✓（首次发版那次失败就顺手建好了，所以去 `New environment` 会报
+`Name has already been taken`）。确认它存在即可：
+
+1. 仓库 → **Settings** → 左栏 **Environments**，列表里应有 `pypi`
+2. 需要新建的话：**New environment** → 名字填 `pypi`（必须与 §1.1 的 Environment name 完全一致）
+
+**保护规则是可选的，两种模式都合法：**
+
+| 选择 | 效果 | 适合 |
+|---|---|---|
+| **不加 Required reviewers**（默认） | **全自动发布**：推标签 → 构建 → 上传 → 建 Release，无需人工介入 | 单人 / 个人仓库 ✓ |
+| 加 **Required reviewers** 并选上自己 | 每次发布停在 `Waiting`，要你去 Actions 页点 **Approve and deploy** | 多人协作，或想把发布权限收紧 |
+
+不加门禁时，防"发错"靠的是构建阶段那条**标签/版本一致性守卫**（标签 ≠ `v` + `__version__`
+直接失败，走不到上传），加上本地打包自查；发错版本的兜底是 PyPI 的 **yank**（见 §4）。
+随时可以补上或去掉这条规则，不影响已有配置。
+
+（**Deployment branches and tags** 也**不用改**：默认放行全部，`v*` 标签照常触发部署。
+若改成 `Selected branches and tags`，务必**显式加一条 Tag 规则 `v*`**，否则标签推送会被拦下，
+而且 `workflow_dispatch` 的重发路径也会一并失效。）
 
 ### 1.3 GitHub 侧：打开开关
 
