@@ -11,3 +11,6 @@ include mkdocs.yml
 
 # 源码包应能直接构建文档站（mkdocs.yml 引用的就是这些页面）
 recursive-include docs *.md
+
+# Linux 串口权限的 udev 规则（装法见 docs/INSTALL.md）
+include deploy/99-usb-serial.rules

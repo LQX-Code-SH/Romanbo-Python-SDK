@@ -57,11 +57,31 @@ python3 -m romanbo --port /dev/ttyUSB0 play my.rsc --ids 8,10 --speed 15
 | 定时精度 | `time.sleep` ≈ 15 ms 抖动；`time.monotonic()` 在 CPython ≤ 3.12 粒度约 15.6 ms | 更好，步进逼近的角速度更准 |
 | 输出编码 | 输出被重定向时 stdout 用区域编码（cp1252/cp936），中文会崩 → CLI 已自动切 UTF-8 | 默认 UTF-8 |
 
-临时放开权限（重插 USB 后失效）：
+临时放开权限（**重插 USB 后失效**，节点名也可能变——先 `python -m romanbo ports` 看当前名字）：
 
 ```bash
-sudo chmod 666 /dev/ttyUSB0
+sudo chmod 666 /dev/ttyUSB1
 ```
+
+**永久解决**（重插 / 换 USB 口 / 重新枚举都有效）——加入 `dialout` 组，并装上随仓库提供的
+udev 规则：
+
+```bash
+sudo usermod -aG dialout $USER                                  # 之后需注销重新登录
+sudo cp deploy/99-usb-serial.rules /etc/udev/rules.d/
+sudo udevadm control --reload && sudo udevadm trigger
+```
+
+规则文件里的两个 16 进制 ID 是 FTDI FT230X（`0403:6015`）的；换别的适配器时先用 `lsusb`
+查它的 ID 再改，否则规则不会匹配（症状是"装了但没生效"）。
+
+> 脚本里建议用 `/dev/serial/by-id/` 下的**稳定路径**（按适配器序列号命名），避免重插后
+> `ttyUSB0` / `ttyUSB1` 变来变去：
+>
+> ```bash
+> ls -l /dev/serial/by-id/
+> python -m romanbo --port /dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DN02AGAB-if00-port0 read --ids 8,10
+> ```
 
 ## 并发边界
 

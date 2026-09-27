@@ -33,6 +33,11 @@
   否则构建阶段直接失败——避免把 1.1.0 的包打上 `v1.2.0` 的标签发出去
 
 ### 文档
+- **随仓库提供 Linux 串口权限的 udev 规则**（`deploy/99-usb-serial.rules`）：`docs/INSTALL.md`
+  的「临时放开权限」一段补上**永久解决**的三条命令（加入 `dialout` 组 + 装规则 + reload），
+  并写明两个让规则静默失效的易错点（`idVendor` 留字面量 `xxxx`、把 `ACTION` 拼成
+  `KERNELACTION`——2026-09-27 排查的那台机器上就是这两种写法）；同时给出
+  `/dev/serial/by-id/` 稳定路径的用法，避免重插后 `ttyUSB0`/`ttyUSB1` 变号
 - **新增[发版与发布](docs/RELEASING.md)**：PyPI Trusted Publishing 首次配置的五处字段、
   GitHub environment 与仓库变量的两个坑（必须建在 Variables、值必须是**小写** `true`）、
   每次发版的固定流程、发布后验证清单、出错处置（`invalid-publisher`、版本号不可重用、

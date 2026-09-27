@@ -1,0 +1,23 @@
+# ROMANBO 舵机总线 —— USB 串口权限（FTDI FT230X: 0403:6015）
+#
+# 装法（一次性；装好后**重插 / 换 USB 口 / 重新枚举都不再需要 chmod**）：
+#
+#   sudo cp deploy/99-usb-serial.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload && sudo udevadm trigger
+#   sudo usermod -aG dialout $USER        # 规则给的是 0660 + dialout 组，所以还要在组里
+#                                         # （执行后需注销重新登录才生效）
+#
+# 为什么需要它：Linux 的串口节点默认是 ``crw-rw---- root:dialout``，用户不在 ``dialout``
+# 组就报 ``PermissionError``；而 ``sudo chmod 666 /dev/ttyUSBx`` 只是**临时**的——重插后
+# 节点重建、权限回退，脚本又会突然失败（2026-09-27 就因此排查了一轮）。
+#
+# 两个易错点：
+#   1. ``ATTRS{idVendor}`` / ``ATTRS{idProduct}`` 必须是**真实的 16 进制 ID**，
+#      不能留字面量 ``xxxx``——那样规则永远不匹配，症状是"装了但没生效"。
+#   2. 属性名是 ``ACTION``，不是 ``KERNELACTION``。拼错同样静默失效。
+#
+# 换用别的适配器时先查 ID：``lsusb``（形状 ``ID 0403:6015``），再改下面这一行。
+# 若不想加入 dialout 组，可以把 ``MODE="0660", GROUP="dialout"`` 换成
+# ``TAG+="uaccess"``（给已登录的桌面用户授 ACL，无需重新登录；依赖 systemd-logind）。
+
+ACTION=="add|change", SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6015", MODE="0660", GROUP="dialout"
