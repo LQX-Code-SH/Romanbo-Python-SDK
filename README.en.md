@@ -10,11 +10,12 @@
 [![Docs](https://img.shields.io/badge/docs-online-2ea44f)](https://lqx-code-sh.github.io/Romanbo-Python-SDK/)
 
 A Python SDK for **ROMANBO** servo models over an RS485 bus. It implements the full
-servo / whole-robot control protocol and **every conclusion has been verified on real
-hardware** (two MOS servos on a shared bus, IDs 8 / 10, COM3, 2026-09-25).
+servo / whole-robot control protocol.
 
-**Every statement in the docs is labelled `protocol spec` / `measured on hardware` /
-`unverified`** — nothing unverified is presented as verified.
+**Conclusions are labelled** `protocol spec` / `measured` / `unverified` — nothing
+unverified is presented as verified. This page covers **how to use** the library;
+measurements, verification procedures and unverified boundaries live in
+[Hardware findings](docs/FINDINGS.md) and the [byte-level spec](docs/SERVO_SPEC.md).
 
 📖 **Documentation site:** <https://lqx-code-sh.github.io/Romanbo-Python-SDK/>
 
@@ -32,7 +33,7 @@ pip install pyserial          # only for real hardware
 ```
 
 ```bash
-# A. Copy the directory: drop `romanbo/` into your project (verified standalone)
+# A. Copy the directory: drop `romanbo/` into your project (no install needed)
 # B. Editable install (development)
 pip install -e .              # with dev tooling: pip install -e ".[dev]"
 # C. Build a wheel
@@ -69,7 +70,7 @@ python -m romanbo --port COM3 --json config --ids 8,10
 python -m romanbo --port COM3 load --ids 8 --watch 10 --interval 0.1
 
 # Rotate +15° at 60 °/s with software load limiting (threshold 60)
-python -m romanbo --port COM3 jog --id 8 --degrees 15 --speed 60 --max-load 60
+python -m romanbo --port COM3 jog --id 8 --degrees 15 --speed 60 --max-load 100 --load-every 3
 
 # Play a .rsc motion file; examples/data/demo.rsc ships with the repo
 python -m romanbo --port COM3 play examples/data/demo.rsc --speed 60
@@ -156,28 +157,20 @@ FF FF | ID | LEN | CMD | DATA ... | CHK
 
 Byte-level, per-command spec: [`docs/SERVO_SPEC.md`](docs/SERVO_SPEC.md).
 
-## Key findings from real hardware
-
-| Finding | Consequence |
-|---|---|
-| `SET_PERIOD (0x0B)` is **ignored by the firmware** — the servo always runs at its own max speed (~150–180 °/s) | Angular speed is implemented by **step-wise approach**: publish an intermediate target every `interval_ms`. Measured error ≈ −4 % |
-| `0x18` is the **measured load**, not a limit. 0 at rest, ~110–130 while moving fast | The only way to limit force: poll `0x18` and stop (`--max-load`) |
-| **Two frames sent back-to-back lose the second one** (ID-independent) | `SerialTransport.write()` enforces `MIN_FRAME_GAP = 2 ms`; without it multi-joint moves only moved the first joint |
-| **Bus quarantine**: after a frame addressed to a non-existent ID, the bus ignores ~0.4 s of traffic | `scan()` waits 0.4 s after a failed probe, otherwise scanning silently misses servos |
-| Torque has an **enable switch** (`0x10`) **and power levels** H/M/L/W (`0x09` `d[5]` bit3-4) | Measured peak load: H 226 > M 152 > L 118; W makes position commands ineffective |
-| `0x0F` (GetMotionPeriod) shares a code with `SetPositionLimit` and **corrupts limits even with no data** | `get_period()` refuses to send unless `unsafe=True` |
-
 ## Software load limiting
 
 This hardware has no usable torque loop, so `--max-load`/`max_load=` polls the measured
 load while moving and stops as soon as the threshold is crossed:
 
 ```bash
-python -m romanbo --port COM3 jog --id 8 --degrees -45 --speed 120 --max-load 10
+python -m romanbo --port COM3 jog --id 8 --degrees -45 --speed 60 \
+    --max-load 100 --load-every 3
 ```
 
-Picking a threshold: 0 at rest, peaks around 110–130 during fast motion → `60` is a
-reasonable starting point; `10` will abort immediately on start-up.
+Recommended: threshold `100` **with** `--load-every 3`, which skips the start-up inrush
+(a few ms long) instead of tripping on it. Why, and how to pick the interval:
+[Software load limiting](docs/LOAD_LIMITING.md); the underlying measurements:
+[Hardware findings](docs/FINDINGS.md).
 
 ## Safety and known limitations
 
@@ -197,18 +190,27 @@ Details: [`docs/SAFETY.md`](docs/SAFETY.md) and [`docs/SERVO_SPEC.md`](docs/SERV
 
 ## Documentation
 
+**Usage guides** — how to use the library; **no test procedures or measured data**
+
 | Document | Contents |
 |---|---|
 | [Install & environment](docs/INSTALL.md) | dependencies, usage modes, Linux/macOS permissions, concurrency |
-| [CLI reference](docs/CLI.md) | all subcommands, global options, exit codes |
-| [Protocol overview](docs/PROTOCOL.md) | frame format, addressing, command codes, ACK rules |
-| [Byte-level spec](docs/SERVO_SPEC.md) | per-command request/response layouts, timing, data semantics |
-| [Hardware findings](docs/FINDINGS.md) | every measurement: speed, load, timing, frame gap… |
+| [CLI reference](docs/CLI.md) | all subcommands, global options, exit codes, `--json` contract |
+| [Web console](docs/WEBUI.md) | local-only web UI: connect/scan, live readouts, motion, parameters, raw frame log |
 | [`.rsc` project files](docs/RSC.md) | structure, teach → export, playback semantics |
-| [Software load limiting](docs/LOAD_LIMITING.md) | rationale, threshold selection, API |
+| [Software load limiting](docs/LOAD_LIMITING.md) | rationale, how to pick threshold & check interval, API |
 | [Safety & limits](docs/SAFETY.md) | dangerous commands, unsupported / unverified list |
+| [Protocol overview](docs/PROTOCOL.md) | frame format, addressing, command codes, ACK rules |
+
+**Spec & verification records** — for developers/maintainers; data, procedures, boundaries
+
+| Document | Contents |
+|---|---|
+| [Byte-level spec](docs/SERVO_SPEC.md) | per-command request/response layouts, timing constraints, verification marks |
+| [Hardware findings](docs/FINDINGS.md) | every measurement: speed, load, timing, quarantine, frame gap, console checks |
 | [Testing](docs/TESTING.md) | unit tests, self-check, docs build |
-| [Test plan](docs/SERVO_TEST_PLAN.md) | graded test cases, acceptance thresholds |
+| [Test plan & records](docs/SERVO_TEST_PLAN.md) | graded test cases, acceptance thresholds, results |
+| [Evidence log](docs/evidence/README.md) | raw probe traffic |
 | [API reference](docs/api.md) | auto-generated from docstrings |
 
 Docs site: <https://lqx-code-sh.github.io/Romanbo-Python-SDK/>

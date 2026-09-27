@@ -4,6 +4,21 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### 文档
+- **按「使用说明 / 规格与验证记录」重划文档边界**：使用说明（README、INSTALL、CLI、
+  WEBUI、RSC、LOAD_LIMITING、SAFETY、PROTOCOL）不再记录开发与测试过程及结果——
+  删掉「验证环境：两个 MOS 舵机串联，ID 8/10，COM3，2026-09-25」这类句子、
+  README 的「关键实测结论」表（数据保留在 FINDINGS）、WEBUI 的整节「真机验证记录」、
+  LOAD_LIMITING 的实测阈值表与复测叙述、各处的内联实测数值与日期
+- 被移出的内容全部归入[真机实测结论](docs/FINDINGS.md)（新增 §9 控制台验证：
+  扫描/读数/运动/LED 的逐帧报文与到位误差；补扫描耗时与真实 `.rsc` 播放记录）
+- 每篇文档开头标明**本文讲什么 / 不讲什么**，`docs/README.md` 索引改为两张表并写明
+  两类文档的边界；英文 README 同步
+- 顺带修正 `README` / `CLI.md` / 测试计划里会误触发起步涌流的限力示例
+  （`--max-load 60` → `100` + `--load-every 3`）
+
 ## [1.1.0] - 2026-09-27
 
 ### 新增

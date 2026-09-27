@@ -9,10 +9,11 @@
 [![Lint: ruff](https://img.shields.io/badge/lint-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![Docs](https://img.shields.io/badge/docs-online-2ea44f)](https://lqx-code-sh.github.io/Romanbo-Python-SDK/)
 
-面向 **ROMANBO** 舵机型号的 RS485 总线控制 SDK，完整实现舵机与整机控制协议，
-并在**真机**上逐条验证过（验证环境：两个 MOS 系列舵机串联，ID 8 / ID 10，COM3，2026-09-25）。
+面向 **ROMANBO** 舵机型号的 RS485 总线控制 SDK，完整实现舵机与整机控制协议。
 
-**文档中每一条结论都区分「协议文档定义」「真机实测」「未验证」**，未验证项绝不写成已验证。
+**结论都标注来源**：协议文档定义 / 实测确认 / 未验证——未验证项不会写成已验证。
+本文档只讲**怎么用**；具体数值、验证过程与未验证边界集中记录在
+[真机实测结论](docs/FINDINGS.md)与[字节级协议规格](docs/SERVO_SPEC.md)。
 
 📖 文档站 <https://lqx-code-sh.github.io/Romanbo-Python-SDK/> ·
 [协议规格](docs/SERVO_SPEC.md) · [API 参考](docs/api.md) · [文档索引](docs/README.md)
@@ -22,9 +23,9 @@
 ## 特性
 
 - **协议全覆盖**：扫描 / 位置 / 角度 / 角速度 / 轮子 / 扭矩档位 / PID / 限值 / 实测负荷 / LED / 零点校准 / 参数回读
-- **角速度是真的角速度**：固件忽略 `SET_PERIOD`，本库用**步进逼近**实现（实测误差约 −4%）
+- **角速度是真的角速度**：固件忽略 `SET_PERIOD`，本库用**步进逼近**实现（精度见[实测结论](docs/FINDINGS.md)）
 - **软件限力**：轮询实测负荷，超阈值立即停止（硬件没有可用的力矩环）
-- **真机验证过的时序**：总线静默期、帧间隔、重试策略都有实测依据，不是猜的
+- **时序按实测确定**：帧间隔、总线静默期、重试策略都不是猜的（见[实测结论](docs/FINDINGS.md)）
 - **离线可用**：`.rsc` 解析、报文编码、`--mock` 模拟器、60 条基准报文自检全部零依赖
 - **可视化控制台**：`python -m romanbo webui` 起一个只监听本机的 Web 界面——扫描、运动、
   读写参数，并把**原始收发报文**实时打在页面上（见[可视化控制台](docs/WEBUI.md)）
@@ -57,8 +58,8 @@ python -m romanbo --port /dev/ttyUSB0 scan
 python -m romanbo --port /dev/ttyUSB0 --json config --ids 8,10
 python -m romanbo --port /dev/ttyUSB0 load --ids 8 --watch 10 --interval 0.1
 
-# 运动：相对 +15° @ 60°/s，阈值 60 的软件限力
-python -m romanbo --port /dev/ttyUSB0 jog --id 8 --degrees 15 --speed 60 --max-load 60
+# 运动：相对 +15° @ 60°/s，带软件限力（阈值 100 + 每 3 拍抽检，跳过起步涌流）
+python -m romanbo --port /dev/ttyUSB0 jog --id 8 --degrees 15 --speed 60 --max-load 100 --load-every 3
 
 # 多关节（--readback 会等到位再回读实际位置与误差）
 python -m romanbo --port /dev/ttyUSB0 move --targets 8:600,10:480 --speed 30 --readback
@@ -86,7 +87,8 @@ with RomanboRobot("/dev/ttyUSB0") as robot:      # 或 connect("COM3", mock=True
     s.torque(True)                               # 力矩使能
     s.rotate(15, speed_dps=60)                   # 以 60 °/s 相对转 15°
     try:
-        s.move_at_speed(1023, 120, max_load=60)  # 120 °/s + 软件限力
+        # 60 °/s + 软件限力：阈值 100、每 3 拍抽检一次（跳过起步涌流）
+        s.move_at_speed(600, 60, max_load=100, load_check_every=3)
     except LoadLimitExceeded as exc:
         print(exc.as_dict())
 
@@ -105,19 +107,6 @@ with RomanboRobot("/dev/ttyUSB0") as robot:      # 或 connect("COM3", mock=True
 
 完整签名与字段说明见 **[API 参考](docs/api.md)**（由 docstring 自动生成）。
 
-## 关键实测结论（摘要）
-
-| 结论 | 影响 |
-|---|---|
-| `SET_PERIOD(0x0B)` **被固件忽略**，舵机总以最大速度（约 150~180 °/s）走完 | 角速度改用**步进逼近**（每 100 ms 一个中间目标） |
-| `0x18` 是**实测负荷**，不是限制值；静止 0、快速动作峰值约 110~130 | 它是硬件上唯一反映输出力矩的读数，[软件限力](docs/LOAD_LIMITING.md)基于它 |
-| **连发两帧会丢第二帧**（与 ID 无关，间隔 ≥2 ms 才稳） | `SerialTransport.write()` 强制 `MIN_FRAME_GAP = 2 ms`，否则多关节只动第一个 |
-| **总线静默期**：向无设备 ID 发帧后，约 0.4 s 内的帧被忽略 | 扫描必须留隔离期，否则整段漏扫；`scan` 探测超时降到 0.15 s |
-| 力矩有**使能开关**（`0x10`，仅布尔）**与出力档位**（`0x09` `d[5]` bit3-4） | 实测 H(226) > M(152) > L(118)，W 档位置指令不生效 |
-| `0x0F` 与 `SetPositionLimit` 同码，**无数据也会改写限值** | `get_period()` 默认拒发，需显式 `unsafe=True` |
-
-完整数据、实测报文与证据日志见 **[真机实测结论](docs/FINDINGS.md)**。
-
 ## 安全提示
 
 - 运动类命令（`jog/angle/sweep/move/play`）**会立即驱动舵机**；下肢/悬臂请先做好支撑。
@@ -130,21 +119,28 @@ with RomanboRobot("/dev/ttyUSB0") as robot:      # 或 connect("COM3", mock=True
 
 ## 文档
 
+**使用说明**——面向使用者，只讲怎么用；**不含测试过程与实测数据**
+
 | 文档 | 内容 |
 |---|---|
 | [安装与环境](docs/INSTALL.md) | 依赖、三种用法、Linux/macOS 权限、平台差异、并发边界 |
-| [命令行参考](docs/CLI.md) | 全部子命令、全局选项、退出码、常用组合 |
+| [命令行参考](docs/CLI.md) | 全部子命令、全局选项、退出码、`--json` 输出契约 |
 | [可视化控制台](docs/WEBUI.md) | 只监听本机的 Web 界面：连接/扫描、实时读数、运动与参数读写、原始报文日志 |
-| [协议速览](docs/PROTOCOL.md) | 帧格式、地址分配、命令码表、应答约定 |
-| [字节级协议规格](docs/SERVO_SPEC.md) | 逐命令请求/回包布局、时序、数据语义、未验证清单 |
-| [真机实测结论](docs/FINDINGS.md) | 全部实测数据与结论（角速度、负荷、时序、帧间隔…） |
-| [工程文件 `.rsc`](docs/RSC.md) | 三层结构、示教导出、播放语义与格式缺陷 |
-| [软件限力](docs/LOAD_LIMITING.md) | 原理、阈值选择、API 与退出码 |
+| [工程文件 `.rsc`](docs/RSC.md) | 三层结构、示教导出、播放语义 |
+| [软件限力](docs/LOAD_LIMITING.md) | 原理、阈值与检查间隔怎么选、API 与退出码 |
 | [安全与已知限制](docs/SAFETY.md) | 危险命令、不支持/未验证清单、软件边界 |
+| [协议速览](docs/PROTOCOL.md) | 帧格式、地址分配、命令码表、应答约定 |
+
+**规格与验证记录**——面向开发者/维护者；数据、过程与未验证边界都在这里
+
+| 文档 | 内容 |
+|---|---|
+| [字节级协议规格](docs/SERVO_SPEC.md) | 逐命令请求/回包布局、时序、数据语义 |
+| [真机实测结论](docs/FINDINGS.md) | 全部实测数据与结论（角速度、负荷、时序、帧间隔…） |
 | [测试与自检](docs/TESTING.md) | 单元测试、基准报文自检、MkDocs 构建 |
-| [测试方案](docs/SERVO_TEST_PLAN.md) | L0~L7 分级用例、判定门限、结果模板、缺陷回归 |
-| [API 参考](docs/api.md) | 由 docstring 自动生成，不会与代码脱节 |
+| [测试方案与记录](docs/SERVO_TEST_PLAN.md) | L0~L8 分级用例、判定门限、结果记录、缺陷回归 |
 | [证据日志](docs/evidence/README.md) | 真机探针原始收发字节 |
+| [API 参考](docs/api.md) | 由 docstring 自动生成，不会与代码脱节 |
 
 在线文档站：<https://lqx-code-sh.github.io/Romanbo-Python-SDK/>（由 `docs/` 构建）
 
