@@ -43,7 +43,7 @@ python -m romanbo [全局选项] <命令> [命令选项]
 | `0` | 正常 |
 | `1` | 参数错误 / 回读确认失败 |
 | `4` | **因软件限力（`--max-load`）中止**（见 [软件限力](LOAD_LIMITING.md)） |
-| `5` | 串口错误 |
+| `5` | 串口/通信错误：打不开端口、**设备未应答（超时）**、设备返回错误帧 |
 | `130` | 用户中断（Ctrl+C） |
 
 ## `--json` 的输出契约
@@ -57,9 +57,16 @@ python -m romanbo --port COM3 --json move --targets 8:600 --speed 30 --readback 
     | jq .readback
 ```
 
-> 结果 JSON 是**缩进美化**的多行文档。注意纯确认类命令（`torque` / `led` / `pid` /
-> `limit` / `param` / `wheel` / `sync` / `calib` / `set-id` / `reset`）目前不产出
-> JSON 结果，仍打印一行中文。
+> 结果 JSON 是**缩进美化**的多行文档。**所有命令**在 `--json` 下都有结果，包括确认类
+> 命令：`torque` / `calib` / `reset` / `wheel` / `led` 回 `ids`（及各自的实际下发值），
+> `sync` / `set-id` 回 `id`（后者还有 `new_id`），`pid` / `limit` 回**回读确认**后的值。
+> 多 ID 命令汇总成**一份** JSON，键是 ID 字符串：
+
+```bash
+python -m romanbo --port COM3 --json torque off --ids 8,10 | jq .ids
+python -m romanbo --port COM3 --json limit --ids 8,10 --min 100 --max 900 | jq .limit
+# {"8": [100, 900], "10": [100, 900]}
+```
 
 ## 常用组合
 

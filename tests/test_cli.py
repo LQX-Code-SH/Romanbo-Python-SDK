@@ -197,6 +197,114 @@ class TestJsonOutputIsClean(unittest.TestCase):
         self.assertIn("播放 ", err)
 
 
+class TestJsonResultOfConfirmCommands(unittest.TestCase):
+    """确认类命令在 ``--json`` 下也要出结果。
+
+    原先它们只打一行中文，`--json` 下 stdout 不是 JSON。多 ID 命令（`pid` / `limit`）
+    还必须**汇总成一份** JSON——每个 ID 打一份就破坏了「stdout 只有一份文档」的契约。
+    """
+
+    def _payload(self, argv: list[str], func: str) -> dict:
+        import contextlib
+        import io
+        import json
+
+        from romanbo.robot import RomanboRobot
+        from romanbo.transport import MockTransport
+
+        mock = MockTransport(servo_ids=[8, 10])
+        mock.positions[8] = 512
+        mock.positions[10] = 512
+        robot = RomanboRobot(transport=mock, ack_timeout=0.1).open()
+        try:
+            args = cli.build_parser().parse_args(["--json"] + argv)
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out), \
+                 contextlib.redirect_stderr(io.StringIO()):
+                rc = getattr(cli, func)(robot, args)
+            self.assertEqual(rc, 0)
+            return json.loads(out.getvalue())        # 整段必须是一份 JSON
+        finally:
+            robot.close()
+
+    def test_every_confirm_command_emits_one_result(self) -> None:
+        cases = (
+            ("cmd_torque", ["torque", "on", "--ids", "8,10"],
+             {"ids": [8, 10], "torque": True}),
+            ("cmd_led", ["led", "--id", "8", "--color", "1,0,1"], {"ids": [8]}),
+            ("cmd_param", ["param", "margin", "--id", "8", "--value", "7"],
+             {"what": "margin", "value": 7, "ids": [8]}),
+            ("cmd_wheel", ["wheel", "--id", "8", "--speed", "50"], {"speed": 50}),
+            ("cmd_sync", ["sync", "--id", "8"], {"id": 8}),
+            ("cmd_calib", ["calib", "--ids", "8,10"], {"ids": [8, 10]}),
+            ("cmd_set_id", ["set-id", "--id", "8", "--new-id", "9"],
+             {"id": 8, "new_id": 9}),
+            ("cmd_reset", ["reset", "--id", "8"], {"ids": [8]}),
+            ("cmd_pid", ["pid", "--ids", "8,10", "--p", "50"], {"saved": True}),
+            ("cmd_limit", ["limit", "--ids", "8,10", "--min", "10", "--max", "1000"],
+             {"limit": {"8": [10, 1000], "10": [10, 1000]}}),
+        )
+        for func, argv, expected in cases:
+            with self.subTest(cmd=argv[0]):
+                payload = self._payload(argv, func)
+                for key, value in expected.items():
+                    self.assertEqual(payload[key], value,
+                                     f"{argv[0]} 的结果里 {key} 不符")
+
+    def test_multi_id_pid_is_aggregated(self) -> None:
+        payload = self._payload(["pid", "--ids", "8,10", "--p", "50"], "cmd_pid")
+        self.assertEqual(sorted(payload["pid"]), ["10", "8"])
+
+
+class TestMainErrorMessages(unittest.TestCase):
+    """`main` 的异常分支不能误导人。
+
+    `TimeoutError` 是 `OSError` 的子类：若不先拦，设备没应答会被报成
+    「串口打不开 → 去查 dialout 权限 / 端口号」，而端口其实好好地打开了。
+    """
+
+    def test_timeout_is_not_reported_as_a_port_problem(self) -> None:
+        import contextlib
+        import io
+
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            # mock 里只有 ID 1；`angle --speed` 会先回读当前位置 → 读不存在的 ID
+            # 必然超时，且该路径不吞异常（`config`/`load` 会把超时吞成 None）
+            rc = cli.main(["--mock", "angle", "--id", "30", "--speed", "30",
+                           "--degrees", "10", "--timeout", "0.1"])
+        self.assertEqual(rc, cli.EXIT_PORT)
+        text = err.getvalue()
+        self.assertIn("未应答", text)
+        self.assertNotIn("dialout", text, "别把人引去查权限——端口是好的")
+        self.assertNotIn("打不开", text)
+
+    def test_protocol_error_becomes_a_one_line_message(self) -> None:
+        import contextlib
+        import io
+        from unittest import mock
+
+        from romanbo import protocol as P
+
+        class _Boom:
+            def __init__(self, *args, **kwargs) -> None:
+                pass
+
+            def __enter__(self):
+                raise P.ProtocolError("设备返回错误帧（过载）")
+
+            def __exit__(self, *exc) -> bool:
+                return False
+
+        err = io.StringIO()
+        with mock.patch.object(cli, "RomanboRobot", _Boom), \
+             contextlib.redirect_stderr(err):
+            rc = cli.main(["--port", "/dev/null", "handshake"])
+        self.assertEqual(rc, cli.EXIT_PORT)
+        self.assertIn("过载", err.getvalue())
+        self.assertNotIn("Traceback", err.getvalue())
+
+
 class TestTargetsValidation(unittest.TestCase):
     """``--targets`` 的位置/ID 范围要在参数层挡住。
 

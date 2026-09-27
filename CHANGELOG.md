@@ -56,10 +56,21 @@
   并注明前置条件——仓库需先启用 Pages，且 `enablement` 不接受 `GITHUB_TOKEN`
 
 ### 修复
+- **`TimeoutError` 不再被报成「串口打不开」**：它是 `OSError` 的子类，原先被
+  `except OSError` 一并捕获，于是**设备没应答**（ID 不在线上、总线偶发丢帧）时会打印
+  「串口打不开 → 常见原因：权限不足（需要 dialout 组）/ 端口名不对」——把排查方向
+  带偏（本轮自己就被这条提示误导过一次）。现在先拦 `TimeoutError`，给「设备未应答」
+  与正确的排查步骤；设备返回错误帧（如过载）也从栈回溯改为一行「协议错误：…」。
+  退出码仍是 `5`（= 串口/通信错误）
 - **`--json` 的 stdout 现在只有结果**：进度/日志行（「读取起始位置…」、`sweep` 的每步
   报告、`play` 的逐帧行、`--frames` 的原始帧）一律改走 **stderr**，
   `python -m romanbo --json … | jq` 可以直接用；顺带给 `play --json` 补上结果
   （原先只打印进度行，`--json` 下 stdout 是空的）
+- **确认类命令补上 `--json` 结果**：`torque` / `led` / `pid` / `limit` / `param` /
+  `wheel` / `sync` / `calib` / `set-id` / `reset` / `export` 原先在 `--json` 下仍只打
+  一行中文，机器无法消费。现在统一经 `_result()` 输出，且**多 ID 命令汇总成一份**
+  （`pid` / `limit` 的键是 ID 字符串，值为回读确认后的实测值），
+  因此「stdout 只有一份 JSON 文档」的契约对所有命令成立
 - **节拍与超时改用 `time.perf_counter()`**：`Servo.move_at_speed` 的节拍预算、
   `sweep` 的 `elapsed_s`、`Robot._wait_for` 与两个 `read_available` 的超时原先都用
   `time.monotonic()`，而 Windows + CPython <= 3.12 下它粒度约 15.6 ms——100 ms 的节拍

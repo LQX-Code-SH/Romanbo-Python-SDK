@@ -121,6 +121,17 @@ def _progress(args: argparse.Namespace, text: str = "") -> None:
           flush=True)
 
 
+def _result(args: argparse.Namespace, payload: Dict[str, object]) -> None:
+    """结果出口（**只**在 ``--json`` 时输出）。
+
+    非 ``--json`` 时什么都不做：人眼文案已由 `_progress` 打印。两者分工固定，
+    所以无论哪种模式，stdout 都不会把 JSON 和文案混在一起；多 ID 命令也因此
+    只产出一份 JSON（在循环结束后汇总）。
+    """
+    if args.json:
+        _emit(payload, args)
+
+
 def _emit(payload: object, args: argparse.Namespace) -> None:
     if args.json:
         print(json.dumps(payload, ensure_ascii=False, indent=2, default=str))
@@ -524,20 +535,25 @@ def cmd_sweep(robot, args) -> int:
 
 def cmd_torque(robot, args) -> int:
     ids = _parse_ids(args.ids) or list(range(1, 18))
-    robot.torque_all(args.state == "on", ids)
-    print(f"扭矩 {args.state.upper()}：{len(ids)} 个关节")
+    on = args.state == "on"
+    robot.torque_all(on, ids)
+    _progress(args, f"扭矩 {args.state.upper()}：{len(ids)} 个关节")
+    _result(args, {"ids": ids, "torque": on})
     return 0
 
 
 def cmd_led(robot, args) -> int:
     ids = _parse_ids(args.ids) or [args.id]
+    sent: Dict[str, int] = {}
     for id_ in ids:
         if args.color:
             red, green, blue = (bool(int(x)) for x in args.color.split(","))
             robot.servo(id_).set_led_color(red, green, blue)
         else:
             robot.servo(id_).set_led(args.value)
-    print(f"LED 已下发到 {ids}")
+        sent[str(id_)] = robot.sent_frames[-1][5]      # 实际下发的 d[5]，便于对报文
+    _progress(args, f"LED 已下发到 {ids}")
+    _result(args, {"ids": ids, "d5": sent})
     return 0
 
 
@@ -553,6 +569,7 @@ def cmd_config(robot, args) -> int:
 
 def cmd_pid(robot, args) -> int:
     """写 PID 并**回读确认**（0x07 保存式写入实测不可靠，库里已改为先 0x47）。"""
+    confirmed: Dict[str, List[int]] = {}
     for id_ in _parse_ids(args.ids) or [args.id]:
         try:
             got = robot.servo(id_).set_pid(args.p, args.i, args.d,
@@ -561,14 +578,17 @@ def cmd_pid(robot, args) -> int:
         except P.ProtocolError as exc:
             print(f"舵机 {id_} PID 写入未生效：{exc}", file=sys.stderr)
             return 1
-        print(f"舵机 {id_} PID 已生效并回读确认: "
-              f"P={got[0]} I={got[1]} D={got[2]}"
-              f"{'（已尝试写入闪存）' if not args.nosave else '（仅 RAM）'}")
+        confirmed[str(id_)] = [int(v) for v in got]
+        _progress(args, f"舵机 {id_} PID 已生效并回读确认: "
+                        f"P={got[0]} I={got[1]} D={got[2]}"
+                        f"{'（已尝试写入闪存）' if not args.nosave else '（仅 RAM）'}")
+    _result(args, {"pid": confirmed, "saved": not args.nosave})
     return 0
 
 
 def cmd_limit(robot, args) -> int:
     """写位置限值并**回读确认**（会掉电保存；SET 类命令可能被静默丢弃）。"""
+    confirmed: Dict[str, List[int]] = {}
     for id_ in _parse_ids(args.ids) or [args.id]:
         try:
             got = robot.servo(id_).set_position_limit(args.min, args.max,
@@ -576,8 +596,10 @@ def cmd_limit(robot, args) -> int:
         except P.ProtocolError as exc:
             print(f"舵机 {id_} 位置限值写入未生效：{exc}", file=sys.stderr)
             return 1
-        print(f"舵机 {id_} 位置限值已生效并回读确认: "
-              f"{got[0]}..{got[1]}（掉电保存，越限会被夹紧）")
+        confirmed[str(id_)] = [int(got[0]), int(got[1])]
+        _progress(args, f"舵机 {id_} 位置限值已生效并回读确认: "
+                        f"{got[0]}..{got[1]}（掉电保存，越限会被夹紧）")
+    _result(args, {"limit": confirmed})
     return 0
 
 
@@ -603,42 +625,53 @@ def cmd_param(robot, args) -> int:
         warning = "（注意：实测回读不体现该写入，本机是否真限流未验证）"
     elif args.what == "accelerate":
         warning = "（注意：0x0E 码值为推断，协议文档未定义）"
-    print(f"{args.what} = {args.value} 已下发到 {ids}{warning}")
+    _progress(args, f"{args.what} = {args.value} 已下发到 {ids}{warning}")
+    _result(args, {"ids": ids, "what": args.what, "value": args.value,
+                   "warning": warning or None})
     return 0
 
 
 def cmd_wheel(robot, args) -> int:
-    for id_ in _parse_ids(args.ids) or [args.id]:
+    ids = _parse_ids(args.ids) or [args.id]
+    for id_ in ids:
         robot.servo(id_).wheel(args.speed,
                                direction=J.WHEEL_CCW if args.ccw else J.WHEEL_CW,
                                free=args.free, relative=args.relative)
-    print(f"轮子模式: speed={args.speed} {'CCW' if args.ccw else 'CW'}")
+    _progress(args, f"轮子模式: speed={args.speed} {'CCW' if args.ccw else 'CW'}")
+    _result(args, {"ids": ids, "speed": args.speed, "ccw": bool(args.ccw),
+                   "free": bool(args.free), "relative": bool(args.relative)})
     return 0
 
 
 def cmd_sync(robot, args) -> int:
     robot.send(P.build_set_sync(args.id))
-    print(f"已发送同步触发 (id={args.id})")
+    _progress(args, f"已发送同步触发 (id={args.id})")
+    _result(args, {"id": args.id})
     return 0
 
 
 def cmd_calib(robot, args) -> int:
-    for id_ in _parse_ids(args.ids) or [args.id]:
+    ids = _parse_ids(args.ids) or [args.id]
+    for id_ in ids:
         robot.servo(id_).set_calibration_currpos()
-    print("已将当前位置设为零点")
+    _progress(args, "已将当前位置设为零点")
+    _result(args, {"ids": ids})
     return 0
 
 
 def cmd_set_id(robot, args) -> int:
     robot.servo(args.id).set_id(args.new_id)
-    print(f"ID {args.id} → {args.new_id} 命令已下发（请用新 ID 重新连接验证）")
+    _progress(args, f"ID {args.id} → {args.new_id} 命令已下发（请用新 ID 重新连接验证）")
+    _result(args, {"id": args.id, "new_id": args.new_id})
     return 0
 
 
 def cmd_reset(robot, args) -> int:
-    for id_ in _parse_ids(args.ids) or [args.id]:
+    ids = _parse_ids(args.ids) or [args.id]
+    for id_ in ids:
         robot.servo(id_).reset()
-    print("复位命令已下发")
+    _progress(args, "复位命令已下发")
+    _result(args, {"ids": ids})
     return 0
 
 
@@ -765,10 +798,12 @@ def cmd_export(robot, args) -> int:
     path = write_project(args.out, frames, motor_count=count,
                          scene_prefix=stem or "taught",
                          home=list(frames[0]["adc"]))
-    print(f"已导出 {path}：{len(frames)} 帧 / {count} 通道 / "
-          f"场景 {sorted({int(f['scene']) for f in frames})}")
-    print(f"  播放：python -m romanbo --port COMx play {args.out} "
-          f"--ids 8,10 --speed 15")
+    scenes = sorted({int(f["scene"]) for f in frames})
+    _progress(args, f"已导出 {path}：{len(frames)} 帧 / {count} 通道 / 场景 {scenes}")
+    _progress(args, f"  播放：python -m romanbo --port COMx play {args.out} "
+                    f"--ids 8,10 --speed 15")
+    _result(args, {"path": str(path), "frames": len(frames),
+                   "motor_count": count, "scenes": scenes})
     return 0
 
 
@@ -1123,6 +1158,18 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             before = len(robot.sent_frames)
             rc = args.func(robot, args)
             _show_io(robot, before, args)
+    except TimeoutError as exc:
+        # 必须**先**拦 TimeoutError：它是 OSError 的子类，否则会落到下面被当成
+        # 「串口打不开」，把人引去查 dialout 权限/端口号，而真实原因是**设备没应答**
+        # （ID 不对、总线偶发丢帧、舵机过载未响应等）——端口其实好好地打开了。
+        print(f"设备未应答（等待回包超时）：{exc}\n"
+              f"  排查：python -m romanbo ports 确认端口；扫描确认在线 ID；"
+              f"总线偶发丢帧时可重试一次", file=sys.stderr)
+        return EXIT_PORT
+    except (P.ProtocolError, P.ErrorResponse) as exc:
+        # 设备回了一帧但我们无法接受（错误帧、字段非法等）：给一行说明而不是栈回溯
+        print(f"协议错误：{exc}", file=sys.stderr)
+        return EXIT_PORT
     except OSError as exc:
         # pyserial 的 SerialException 继承自 OSError；PermissionError 也走这里
         print(_port_hint(args.port or "", exc), file=sys.stderr)
