@@ -74,6 +74,46 @@ class TestStdioEncoding(unittest.TestCase):
         self.assertIn("60", proc.stdout)          # 60 条向量全部跑完
 
 
+class TestTargetsValidation(unittest.TestCase):
+    """``--targets`` 的位置/ID 范围要在参数层挡住。
+
+    位置只占 10 位（0..1023）：越界值会被 `build_set_position` 拒绝，而在修复前
+    1024..2047 会**撞上 relative 位**被固件当成相对运动（1500 → 相对、
+    2047 → 相对 +1023）——静默的非预期运动，比报错危险得多。
+    """
+
+    @staticmethod
+    def _parse(argv: list[str]):
+        import contextlib
+        import io
+
+        with contextlib.redirect_stderr(io.StringIO()):     # 屏蔽 argparse 的用法输出
+            return cli.build_parser().parse_args(argv)
+
+    def test_valid_targets_become_int_keys(self) -> None:
+        args = self._parse(["move", "--targets", "8:600,10:480"])
+        self.assertEqual(args.targets, {8: 600, 10: 480})
+
+    def test_out_of_range_position_is_a_clean_parser_error(self) -> None:
+        for bad in ("1:1024", "1:1500", "1:2047", "1:-1"):
+            with self.subTest(targets=bad):
+                with self.assertRaises(SystemExit) as ctx:
+                    self._parse(["move", "--targets", bad])
+                self.assertEqual(ctx.exception.code, 2)
+
+    def test_out_of_range_servo_id_is_rejected(self) -> None:
+        with self.assertRaises(SystemExit) as ctx:
+            self._parse(["move", "--targets", "99:600"])
+        self.assertEqual(ctx.exception.code, 2)
+
+    def test_malformed_targets_are_rejected(self) -> None:
+        for bad in ("8", "8:abc"):
+            with self.subTest(targets=bad):
+                with self.assertRaises(SystemExit) as ctx:
+                    self._parse(["move", "--targets", bad])
+                self.assertEqual(ctx.exception.code, 2)
+
+
 class TestCliPlayOptions(unittest.TestCase):
     def test_play_accepts_ids(self) -> None:
         args = cli.build_parser().parse_args(["play", "x.rsc", "--ids", "8,10"])

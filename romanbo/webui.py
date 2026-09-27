@@ -193,13 +193,16 @@ class WebConsole:
         servo = self._servo(id_)
         out: Dict[str, Any] = {"id": int(id_), "position": None, "load": None,
                                "temperature": None}
-        with self._lock:
-            try:
-                out["position"] = servo.get_position(timeout=0.2, retries=0)
-            except (TimeoutError, P.ProtocolError) as exc:
-                self._note(f"id={id_} 读取位置失败: {exc}")
-            out["load"] = self._quick_byte(servo, P.ServoCmd.GET_LOAD)
-            out["temperature"] = self._quick_byte(servo, P.ServoCmd.GET_TEMP)
+        # 读操作**不取设备锁**：goto()/multi_move() 会把锁持有整个运动过程，排队会让
+        # 界面读数在运动期间整体冻结——而那一刻正是最需要看读数的时候。单次请求的
+        # 原子性已由 RomanboRobot 内部的收发锁保证，插在两步之间读取是安全的
+        # （与 CLI 的 move --readback 同理）。
+        try:
+            out["position"] = servo.get_position(timeout=0.2, retries=0)
+        except (TimeoutError, P.ProtocolError, RuntimeError) as exc:
+            self._note(f"id={id_} 读取位置失败: {exc}")
+        out["load"] = self._quick_byte(servo, P.ServoCmd.GET_LOAD)
+        out["temperature"] = self._quick_byte(servo, P.ServoCmd.GET_TEMP)
         return out
 
     def _quick_byte(self, servo: Servo, cmd: int,
@@ -347,16 +350,19 @@ class WebConsole:
 
         还没扫描过时退化为「向 1..32 广播断电」——SET 类命令无应答，不必等回包，
         32 帧约 64 ms 就能发完（见 `MIN_FRAME_GAP`）。
+
+        !!! warning
+            **故意不取设备锁**：`goto()` / `multi_move()` 会把 ``_lock`` 持有整个
+            运动过程（慢速长距离可达数十秒），紧急停止若排队等锁，就要等运动自己
+            走完才生效——等于安全按钮失效。这里每帧只短暂占用 `RomanboRobot`
+            内部的收发锁，因此能**插进运动节拍之间**生效：力矩一断，后续位置指令
+            就不再驱动关节。
         """
         robot = self._require()
-        with self._lock:
-            if self._online:
-                robot.torque_all(False, ids=self._online)
-                return {"ids": list(self._online), "broadcast": False}
-            ids = list(range(P.SERVO_ID_MIN, P.SERVO_ID_MAX + 1))
-            for id_ in ids:
-                robot.send(P.build_set_torque(id_, 0))
-            return {"ids": ids, "broadcast": True}
+        ids = list(self._online) or list(range(P.SERVO_ID_MIN, P.SERVO_ID_MAX + 1))
+        for id_ in ids:
+            robot.send(P.build_set_torque(id_, P.OFF))
+        return {"ids": ids, "broadcast": not self._online}
 
     # -- 内部 -------------------------------------------------------------- #
 
@@ -430,10 +436,16 @@ class _Handler(BaseHTTPRequestHandler):
         supplied = self.headers.get("X-Robot-Token") or query.get("token", [""])[0]
         return bool(self.token) and secrets.compare_digest(str(supplied), self.token)
 
+    #: 请求体上限：本机调试接口的任何合法请求都远小于此
+    MAX_BODY_BYTES = 1 << 20
+
     def _read_body(self) -> Any:
         length = int(self.headers.get("Content-Length") or 0)
         if length <= 0:
             return {}
+        if length > self.MAX_BODY_BYTES:
+            # 不读：否则线程会按声明值阻塞/分配，成为唯一没有上限的入口
+            raise ValueError(f"请求体过大：{length} 字节（上限 {self.MAX_BODY_BYTES}）")
         raw = self.rfile.read(length)
         try:
             return json.loads(raw.decode("utf-8"))

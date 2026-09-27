@@ -3,7 +3,7 @@
 ## 日常自检
 
 ```bash
-python -m unittest discover -s tests -t .      # 170 项单元测试（全部通过，无跳过）
+python -m unittest discover -s tests -t .      # 188 项单元测试（全部通过，无跳过）
 python -m romanbo selftest                     # 60 条基准报文（逐字节比对）
 python -m romanbo --mock scan                  # 离线模拟器冒烟
 python examples/04_offline_frames.py           # 打印每条指令的真实报文
@@ -25,6 +25,8 @@ python examples/04_offline_frames.py           # 打印每条指令的真实报�
 | `tests/test_cli.py` | 命令行参数解析与 `move --settle/--readback` 行为 |
 | `tests/test_doc_led.py` | 协议文档 LED 示例与本实现的逐字节交叉校验 |
 | `tests/test_standalone.py` | 脱离仓库可用性（子进程屏蔽 `serial`）、收发锁、帧间隔 |
+| `tests/test_servo.py` | 舵机层健壮性：畸形/截断回包不得**静默**变成错误数值 |
+| `tests/test_webui.py` | 控制台后端：访问控制（令牌 / Host）、前后端接口契约、页面静态一致性、**运动期间的并发响应**、请求体上限 |
 
 ## 文档站
 

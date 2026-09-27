@@ -128,6 +128,19 @@ class TestServoStepwise(unittest.TestCase):
         self.assertEqual(_commands(self.robot, P.ServoCmd.SET_PERIOD), [])
         self.assertEqual(_positions_for(self.robot, 1)[-1], 512)
 
+    def test_sweep_period_path_uses_injected_sleep(self) -> None:
+        """``period_ms`` 分支也必须走注入的 ``sleep``，否则测试会真的睡下去。
+
+        原先该分支写死 ``time.sleep(period/1000 + settle)``：传了 ``sleep=_noop``
+        也照样真阻塞（步进分支却尊重它），既拖慢测试也说明参数没生效。
+        """
+        calls: list[float] = []
+        records = self.robot.servo(1).sweep(512, 614, cycles=1, period_ms=500,
+                                            readback=False, settle=0.1,
+                                            return_home=False, sleep=calls.append)
+        self.assertEqual([r["target"] for r in records], [614, 512])
+        self.assertEqual(calls, [0.6, 0.6], "period 分支没有用注入的 sleep")
+
 
 class TestRobotStepwise(unittest.TestCase):
     def setUp(self) -> None:

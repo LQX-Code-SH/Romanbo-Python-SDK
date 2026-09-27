@@ -411,8 +411,10 @@ def build_set_position(id_: int, position: int, torque: int = LEVEL_MIDDLE,
         d[5] = v >> 8            # 含档位(bit3=bit11, bit4=bit12)、relative(bit2)、位置高位
         d[6] = v & 0xFF
 
-    :param position: 0..1023（常规范围）；``d[5]`` 只留 3 位给位置高位，
-        ``>= 2048`` 会污染档位/relative 位（目标会被静默改成别的值）。
+    :param position: 0..1023（10 位 ADC）；越界抛 `ValueError`。
+        ``d[5]`` 只有 bit0/bit1 是位置高位，bit2 是 relative、bit3/bit4 是出力档位，
+        所以 1024 及以上会**撞上 relative 位**而被固件当成相对运动
+        （``1500`` → 相对、``2047`` → 相对 +1023），必须在入口挡掉。
     :param torque: **出力档位**，取值 `LEVEL_HIGH` / `LEVEL_MIDDLE` /
         `LEVEL_LOW` / `LEVEL_WHEEL`（0/1/2/3，见上表）。
         默认 1（= M，兼容历史默认值）；想要最大出力请传 0。
@@ -421,8 +423,8 @@ def build_set_position(id_: int, position: int, torque: int = LEVEL_MIDDLE,
     """
     if level is not None:
         torque = int(level)
-    if not 0 <= int(position) <= 2047:
-        raise ValueError(f"position 应为 0..2047（建议 0..1023），收到 {position}")
+    if not ADC_MIN <= int(position) <= ADC_MAX:
+        raise ValueError(f"position 应为 {ADC_MIN}..{ADC_MAX}，收到 {position}")
     high = ((position >> 8) | (torque << 3) | (relative << 2)) & 0xFF
     return make_frame(ServoCmd.SET_POSITION, id_, bytes([high, position & 0xFF]), size=8)
 
@@ -716,10 +718,20 @@ class FrameParser:
         self.errors = 0
 
     def _candidate_lengths(self) -> List[int]:
-        """由 ``LEN`` 字段推出可能的整帧长度（应答语义优先）。"""
+        """由 ``LEN`` 字段推出可能的整帧长度。
+
+        ``declared`` 本身已是合法帧长时**优先按「整帧长度」解释**（舵机请求与舵机
+        回包都是这个语义，见 `docs/SERVO_SPEC.md` §2.2）；只有它小于最小帧长
+        （控制器回包的 ``LEN=2``）才优先按「数据长度」解释。原先的顺序（先
+        ``declared + 6``）会把一条完整舵机帧错切成长窗口，恰好凑出校验和时
+        （约 1/256）就把后续字节一起吞掉，表现为偶发丢帧/串位。
+        """
         declared = self._buf[3]
+        order = ((declared, declared + MIN_FRAME_LEN)
+                 if declared >= MIN_FRAME_LEN
+                 else (declared + MIN_FRAME_LEN, declared))
         out: List[int] = []
-        for candidate in (declared + MIN_FRAME_LEN, declared):
+        for candidate in order:
             if MIN_FRAME_LEN <= candidate <= MAX_FRAME_LEN and candidate not in out:
                 out.append(candidate)
         return out

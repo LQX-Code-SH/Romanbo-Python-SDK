@@ -70,7 +70,12 @@ def _parse_ids(text: Optional[str]) -> Optional[List[int]]:
 
 
 def _parse_targets(text: str) -> Dict[int, int]:
-    """解析 ``"1:512,2:600"`` 形式的目标位置。"""
+    """解析 ``"1:512,2:600"`` 形式的目标位置。
+
+    作为 ``--targets`` 的 ``type=`` 使用，因此参数错误交给 argparse 统一报错
+    （干净的一行提示 + 退出码 2，而不是栈回溯）。范围也在这里挡住：位置只占
+    10 位，越界值会被 `build_set_position` 拒绝，早点报错更清楚。
+    """
     out: Dict[int, int] = {}
     for part in text.replace(" ", "").split(","):
         if not part:
@@ -78,7 +83,18 @@ def _parse_targets(text: str) -> Dict[int, int]:
         if ":" not in part:
             raise argparse.ArgumentTypeError(f"目标格式应为 id:位置，收到 {part!r}")
         id_text, value_text = part.split(":", 1)
-        out[int(id_text)] = int(value_text)
+        try:
+            id_ = int(id_text)
+            value = int(value_text)
+        except ValueError:
+            raise argparse.ArgumentTypeError(f"id 与位置都要是整数，收到 {part!r}") from None
+        if not P.SERVO_ID_MIN <= id_ <= P.SERVO_ID_MAX:
+            raise argparse.ArgumentTypeError(
+                f"舵机 ID 越界：{id_}（应为 {P.SERVO_ID_MIN}..{P.SERVO_ID_MAX}）")
+        if not P.ADC_MIN <= value <= P.ADC_MAX:
+            raise argparse.ArgumentTypeError(
+                f"位置越界：ID {id_} 的目标 {value}（应为 {P.ADC_MIN}..{P.ADC_MAX}）")
+        out[id_] = value
     if not out:
         raise argparse.ArgumentTypeError("目标位置为空")
     return out
@@ -286,7 +302,7 @@ def cmd_move(robot, args) -> int:
     因此直接回读会读到中间值。``--readback`` 会在返回前等待 ``--settle``
     秒（默认 0.3 s）再回读各关节实际位置与误差，使输出可直接作为判定依据。
     """
-    targets = _parse_targets(args.targets)
+    targets = args.targets          # 已由 --targets 的 type= 解析成 {id: adc}
     if args.torque is not None:
         on = args.torque == "on"
         for id_ in targets:
@@ -817,7 +833,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_teach)
 
     p = sub.add_parser("move", help="多关节同步运动")
-    p.add_argument("--targets", required=True, help="例如 1:600,2:480")
+    p.add_argument("--targets", required=True, type=_parse_targets,
+                   help="例如 1:600,2:480（位置 0..1023）")
     p.add_argument("--period", type=int, default=500, help="运动周期 ms")
     p.add_argument("--speed", type=float, default=None,
                    help="**实际角速度**（度/秒）；给出时忽略 --period，按步进逼近")

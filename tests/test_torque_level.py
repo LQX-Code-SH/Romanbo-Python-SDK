@@ -57,11 +57,17 @@ class TestLevelFrames(unittest.TestCase):
         self.assertEqual(middle[5] & 0x18, 0x08)         # bit3=1, bit4=0
 
     def test_position_range_is_checked(self) -> None:
-        # d[5] 只留 3 位给位置高位；>=2048 会污染档位/relative 位
-        for bad in (-1, 2048, 3000):
+        # 位置只占 10 位（d[5] 的 bit0/bit1 + d[6]）；d[5] 的 bit2 是 relative、
+        # bit3/bit4 是出力档位。因此 1024 及以上会**撞上 relative 位**——
+        # 1500 被固件当成相对运动、2047 变成"相对 +1023"，上限必须是 1023。
+        for bad in (-1, 1024, 1500, 2047, 3000):
             with self.assertRaises(ValueError):
                 P.build_set_position(1, bad)
-        self.assertEqual(P.build_set_position(1, 2047)[5] & 0x07, 0x07)
+        for good in (0, 512, 1023):
+            with self.subTest(position=good):
+                frame = P.build_set_position(1, good, level=P.LEVEL_MIDDLE)
+                self.assertEqual(frame[5] & 0x04, 0x00, "relative 位被污染")
+                self.assertEqual(frame[5] & 0x03, (good >> 8) & 0x03)
 
 
 class TestLevelPlumbing(unittest.TestCase):

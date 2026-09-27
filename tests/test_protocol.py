@@ -140,6 +140,32 @@ class TestFrameParser(unittest.TestCase):
         with self.assertRaises(P.ErrorResponse):
             raise P.ErrorResponse(frames[0])
 
+    def test_length_candidates_prefer_whole_frame_semantics(self) -> None:
+        """舵机的 ``LEN`` 是「整帧长度」，必须优先按它截取。
+
+        原先顺序是先试 ``declared + 6``：缓冲里恰好够长时会把一条完整帧错切成
+        跨帧窗口，凑出校验和（约 1/256）就把后续字节一起吞掉，表现为偶发丢帧/串位。
+        """
+        parser = P.FrameParser()
+        parser.feed(bytes([0xFF, 0xFF, 0x01, 0x08]))
+        self.assertEqual(parser._candidate_lengths(), [8, 14])
+        # 控制器回包的 LEN 是「数据长度」（2 → 整帧 8），此时没有歧义
+        parser.reset()
+        parser.feed(bytes([0xFF, 0xFF, 0x00, 0x02]))
+        self.assertEqual(parser._candidate_lengths(), [8])
+
+    def test_back_to_back_servo_replies_are_not_merged(self) -> None:
+        """连续两条舵机回包必须各自成帧（错切会把后一条吞进前一条）。
+
+        两帧都是逐字节核验过的：``FFFF0109940001FE65`` 是 ID1 的位置回包
+        （510），``FFFF080898000 05A`` 是 2026-09-27 真机采集的 ID8 负荷回包。
+        """
+        parser = P.FrameParser()
+        frames = parser.feed(bytes.fromhex("FFFF0109940001FE65")
+                             + bytes.fromhex("FFFF08089800005A"))
+        self.assertEqual([(f.id, f.cmd) for f in frames], [(1, 0x94), (8, 0x98)])
+        self.assertEqual(parser.errors, 0)
+
 
 class TestDeviceReplies(unittest.TestCase):
     """真机采集的应答帧（2026-09-25，COM3 / FTDI FT230X 上的控制器板）。"""

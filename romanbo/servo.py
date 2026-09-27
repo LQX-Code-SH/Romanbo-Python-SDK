@@ -346,7 +346,7 @@ class Servo:
                 sleep(settle)
             else:
                 self.set_position(target, level=level)
-                time.sleep(period / 1000.0 + settle)
+                sleep(period / 1000.0 + settle)      # 用注入的 sleep，与步进路径一致
             actual = self.get_position() if readback else None
             record: Dict[str, object] = {
                 "step": index,
@@ -367,7 +367,7 @@ class Servo:
                 sleep(settle)
             else:
                 self.set_position(home, level=level)
-                time.sleep(period / 1000.0 + settle)
+                sleep(period / 1000.0 + settle)      # 同上：尊重注入的 sleep
         return records
 
     def next_position(self, position: int, *, period_ms: Optional[int] = None,
@@ -625,11 +625,13 @@ class Servo:
     def _decode_position(data: bytes) -> int:
         body = P.payload(data)
         value = P.decode_u16_be(body, POSITION_DATA_OFFSET)
-        if value is not None:
-            return int(value)
-        if body:
-            return body[0]
-        raise P.ProtocolError("GetPosition 回包为空")
+        if value is None:
+            # 位置是 16 位大端：数值段不足 2 字节说明这帧被截断了。此时返回 body[0]
+            # 会给出一个"看着合理"的错值（例如 3 而不是 1012），调用方据此算出的
+            # 位移、角度、rotate() 的基准全是错的，却没有任何提示——宁可报错。
+            raise P.ProtocolError(
+                f"GetPosition 回包过短（数值段 {len(body)} 字节）: {data.hex(' ')}")
+        return int(value)
 
     def get_pid(self, *, timeout: Optional[float] = None) -> Tuple[int, int, int]:
         """读 PID。实测回包 ``00 32 00 05`` → (50, 0, 5)。"""

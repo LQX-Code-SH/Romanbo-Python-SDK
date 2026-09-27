@@ -6,11 +6,13 @@
 
 from __future__ import annotations
 
+import http.client
 import json
 import os
 import re
 import sys
 import threading
+import time
 import unittest
 import urllib.error
 import urllib.request
@@ -446,6 +448,95 @@ class TestPageIntegrity(unittest.TestCase):
     def test_no_leftover_debug_markers(self) -> None:
         for marker in ("console.log", "TODO", "FIXME", "debugger"):
             self.assertNotIn(marker, PAGE, f"页面里残留了调试标记：{marker}")
+
+
+class TestConsoleConcurrency(unittest.TestCase):
+    """运动期间控制台仍要能响应——紧急停止与读数**不能**排在运动后面。
+
+    回归 `WebConsole.stop_all` / `servo_live`：它们原先与 `goto` / `multi_move`
+    共用一把设备锁，而运动会把锁持有整个动作过程（这里约 2 s），于是
+    「紧急停止」要等运动自己走完才生效（安全按钮失效）、读数在运动期间整体冻结。
+    """
+
+    def setUp(self) -> None:
+        self.console = WebConsole(mock=True)
+        self.console.connect()
+        self.console.scan(1, 3)
+
+    def tearDown(self) -> None:
+        self.console.disconnect()
+
+    def _start_slow_move(self) -> threading.Thread:
+        """后台跑一次约 2 s 的运动（512→900 @60°/s，19 步 × 100 ms）。"""
+        thread = threading.Thread(
+            target=self.console.goto,
+            kwargs={"id_": 1, "adc": 900, "speed_dps": 60}, daemon=True)
+        thread.start()
+        time.sleep(0.25)                 # 等它拿到锁并发出若干步
+        return thread
+
+    def test_emergency_stop_does_not_wait_for_the_move(self) -> None:
+        thread = self._start_slow_move()
+        started = time.perf_counter()
+        result = self.console.stop_all()
+        elapsed = time.perf_counter() - started
+        self.assertLess(elapsed, 1.0,
+                        f"紧急停止等了 {elapsed:.2f}s：说明它在排队等设备锁")
+        self.assertTrue(thread.is_alive(), "运动应仍在进行（否则测的不是并发场景）")
+        self.assertEqual(result["ids"], [1, 2, 3])
+        self.assertFalse(result["broadcast"])
+        # 断电帧确实发到线上了（ID 1 的 SetTorque=0）
+        sent = [f["hex"] for f in self.console.frames.since(0)[0] if f["dir"] == "tx"]
+        self.assertIn("FF FF 01 07 10 00 EA", sent)
+        thread.join(timeout=10)
+
+    def test_emergency_stop_broadcasts_before_scanning(self) -> None:
+        """还没扫描过时退化为向 1..32 广播断电（同样不能等锁）。"""
+        console = WebConsole(mock=True)
+        console.connect()
+        try:
+            result = console.stop_all()
+            self.assertTrue(result["broadcast"])
+            self.assertEqual(len(result["ids"]), 32)
+        finally:
+            console.disconnect()
+
+    def test_live_reads_work_during_the_move(self) -> None:
+        thread = self._start_slow_move()
+        started = time.perf_counter()
+        live = self.console.servo_live(1)
+        elapsed = time.perf_counter() - started
+        self.assertLess(elapsed, 0.5,
+                        f"运动期间读数等了 {elapsed:.2f}s：读操作不应取设备锁")
+        self.assertIsNotNone(live["position"], "运动期间应能读到位置")
+        thread.join(timeout=10)
+
+
+class TestRequestBodyLimit(_ServerMixin, unittest.TestCase):
+    """请求体上限：声明超大 ``Content-Length`` 时立即报错，而不是把线程挂住。"""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        console = WebConsole(mock=True)
+        console.connect()
+        cls.start_server(console)
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls.stop_server()
+
+    def test_oversized_content_length_is_rejected_immediately(self) -> None:
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
+        try:
+            conn.putrequest("POST", "/api/servo/1/goto")
+            conn.putheader("X-Robot-Token", TOKEN)
+            conn.putheader("Content-Length", str(1 << 21))    # 2 MiB，且故意不发 body
+            conn.endheaders()
+            response = conn.getresponse()
+            self.assertEqual(response.status, 409)
+            self.assertIn("过大", response.read().decode("utf-8"))
+        finally:
+            conn.close()
 
 
 if __name__ == "__main__":  # pragma: no cover
