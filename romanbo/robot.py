@@ -102,6 +102,15 @@ class RomanboRobot:
     def is_open(self) -> bool:
         return self.transport.is_open
 
+    @property
+    def lost_reason(self) -> Optional[str]:
+        """设备消失（拔插/重枚举）的原因；``None`` 表示正常。
+
+        串口断开后 `is_open` 会立刻变假（见 `SerialTransport._mark_lost`），这里把原因
+        一并带给上层——控制台据此提示"请重新连接"，而不是只显示一个 IO 错误。
+        """
+        return getattr(self.transport, "lost_reason", None)  # type: ignore[no-any-return]
+
     # -- 收发 -------------------------------------------------------------- #
 
     def send(self, frame: bytes) -> None:

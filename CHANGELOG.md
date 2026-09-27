@@ -7,6 +7,13 @@
 ## [Unreleased]
 
 ### 修复
+- **设备消失（拔插/重枚举）后不再继续自报「已连接」**（`SerialTransport._mark_lost`，
+  `webui.WebConsole.state` 新增 `lost_reason`）：设备被拔掉后**句柄仍是"打开"状态**
+  （`is_open` 为真），控制台于是继续显示 `connected: true` 并保留陈旧的在线列表，直到
+  发命令才报 `Input/output error`——这期间用户会以为机器人还能控。现在读写遇到"设备消失"
+  类 errno（`EIO` / `ENXIO` / `ENOENT` / `ENODEV` / `ESTALE` / `EBADF`）会**主动关闭**
+  并记下原因，`connected` 立刻变假，HTTP 错误里补一句「串口已断开…请重新连接」。
+  **普通读超时不算断线**（舵机偶尔漏答是常态）
 - **控制台连不上串口时给出可照做的处置**（`webui.WebConsole.connect`，新增
   `transport.port_error_hint`）：原先页面上只有 `SerialException: [Errno 13] Permission
   denied`，看不出是"该去加 `dialout` 组"还是"该去关占用程序"。现在按 `errno` 分类后把处置

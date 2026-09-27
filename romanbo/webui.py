@@ -83,6 +83,11 @@ class _LoggingTransport(Transport):
     def is_open(self) -> bool:
         return self._inner.is_open
 
+    @property
+    def lost_reason(self) -> Optional[str]:
+        """把内层的断线原因透出去（`WebConsole.state` 要靠它提示重新连接）。"""
+        return getattr(self._inner, "lost_reason", None)
+
     def write(self, frame: bytes) -> None:
         self._log.add("tx", bytes(frame))
         self._inner.write(frame)
@@ -166,6 +171,8 @@ class WebConsole:
             "baudrate": self._baudrate,
             "online": list(self._online),
             "last_error": (robot.last_error if robot is not None else None),
+            #: 设备消失（拔插/重枚举）的原因；前端据此提示"请重新连接"
+            "lost_reason": (robot.lost_reason if robot is not None else None),
         }
 
     @staticmethod
@@ -471,6 +478,18 @@ class _Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:                                # noqa: N802
         self._route("POST")
 
+    def _lost_hint(self) -> str:
+        """串口已被判定消失时，给错误消息补一句「重新连接」。
+
+        补这一句是因为否则用户只看到「未应答（超时）」或一个 IO 错误，**不知道为什么要
+        重连**——设备被拔插/重枚举后旧句柄还在，`SerialTransport` 会主动把它标记成断开，
+        于是故障表现是"读不到数"而不是"连不上"。
+        """
+        if not self.console.state().get("lost_reason"):
+            return ""
+        return ("｜串口已断开（设备被拔插或重新枚举）：请在页面上重新连接；"
+                "Linux 上可用 /dev/serial/by-id/ 下的稳定路径避免端口号变化")
+
     def _route(self, method: str) -> None:
         parsed = urlparse(self.path)
         query = parse_qs(parsed.query)
@@ -502,16 +521,21 @@ class _Handler(BaseHTTPRequestHandler):
                              "aborted": True, "detail": exc.as_dict()})
             return
         except TimeoutError as exc:
-            self._send(504, {"error": f"舵机未应答（超时）：{exc}"})
+            self._send(504, {"error": f"舵机未应答（超时）：{exc}" + self._lost_hint()})
             return
         except P.ProtocolError as exc:
-            self._send(400, {"error": f"协议错误：{exc}"})
+            self._send(400, {"error": f"协议错误：{exc}" + self._lost_hint()})
+            return
+        except OSError as exc:
+            # 读写失败（串口断线、设备被拔）：不是服务端故障，标成 409，
+            # 并把"请重新连接"的提示带上。
+            self._send(409, {"error": f"{type(exc).__name__}: {exc}" + self._lost_hint()})
             return
         except (ValueError, RuntimeError) as exc:
-            self._send(409, {"error": str(exc)})
+            self._send(409, {"error": str(exc) + self._lost_hint()})
             return
         except Exception as exc:                              # noqa: BLE001
-            self._send(500, {"error": f"{type(exc).__name__}: {exc}"})
+            self._send(500, {"error": f"{type(exc).__name__}: {exc}" + self._lost_hint()})
             return
         self._send(status, payload)
 

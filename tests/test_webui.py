@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import errno
 import http.client
 import json
 import os
@@ -578,6 +579,100 @@ class TestConnectFailureHint(unittest.TestCase):
         text = self._message(OSError(2, "No such file or directory: 'COM3'"), port="COM3")
         self.assertIn("COM3", text)
         self.assertIn("ports", text)
+
+
+class TestLostPortReporting(unittest.TestCase):
+    """串口被拔掉 / 重新枚举后，控制台不能继续自报「已连接」。
+
+    实测 2026-09-27：适配器重枚举成 ``ttyUSB1`` 后，旧控制台仍显示
+    ``connected: true, online: [8, 10]``（攥着已删除的 ``ttyUSB0`` 句柄），直到发命令
+    才报 ``Input/output error``——这一段时间里用户会以为机器人还能控。断线判据只看
+    "设备消失"类 errno：普通读超时、校验和不符都不算断线。
+    """
+
+    @staticmethod
+    def _dead_handle():
+        """一个"设备已消失"的假句柄：``is_open`` 仍为真，读写全部 EIO。"""
+
+        class _Dead:
+            is_open = True
+
+            @staticmethod
+            def write(_data):
+                raise OSError(errno.EIO, "Input/output error")
+
+            @property
+            def in_waiting(self):
+                raise OSError(errno.EIO, "Input/output error")
+
+            @staticmethod
+            def read(_size):
+                raise OSError(errno.EIO, "Input/output error")
+
+            @staticmethod
+            def close():
+                pass
+
+        return _Dead()
+
+    def _lost_transport(self):
+        from romanbo.transport import SerialTransport
+
+        port = SerialTransport("/dev/ttyUSB1")
+        port._ser = self._dead_handle()          # 直接放一个已消失的句柄
+        return port
+
+    def test_write_failure_marks_the_port_lost(self) -> None:
+        port = self._lost_transport()
+        self.assertTrue(port.is_open)
+        with self.assertRaises(OSError):
+            port.write(bytes.fromhex("FFFF010614E0"))
+        self.assertFalse(port.is_open, "设备消失后 is_open 必须立刻变假")
+        self.assertIn("Input/output error", port.lost_reason or "")
+
+    def test_read_failure_marks_the_port_lost(self) -> None:
+        port = self._lost_transport()
+        with self.assertRaises(OSError):
+            port.read_available(0.05)
+        self.assertFalse(port.is_open)
+        self.assertTrue(port.lost_reason)
+
+    def test_ordinary_timeout_is_not_a_disconnect(self) -> None:
+        """读超时（无数据返回 ``b""``）不能被当成断线——舵机偶尔漏答是常态。"""
+        from romanbo.transport import SerialTransport
+
+        class _Quiet:
+            is_open = True
+
+            @property
+            def in_waiting(self):
+                return 0
+
+            @staticmethod
+            def close():
+                pass
+
+        port = SerialTransport("/dev/ttyUSB1")
+        port._ser = _Quiet()
+        self.assertEqual(port.read_available(0.02), b"")
+        self.assertTrue(port.is_open, "没数据 ≠ 断线")
+        self.assertIsNone(port.lost_reason)
+
+    def test_console_stops_claiming_connected_after_the_device_vanishes(self) -> None:
+        from romanbo.robot import RomanboRobot
+
+        port = self._lost_transport()
+        console = WebConsole(port="/dev/ttyUSB1")
+        console._robot = RomanboRobot(transport=port)     # 私有注入：只为验证状态口径
+        self.assertTrue(console.state()["connected"])
+        self.assertIsNone(console.state()["lost_reason"])
+
+        with self.assertRaises(OSError):
+            console._robot.send(bytes.fromhex("FFFF010614E0"))
+
+        state = console.state()
+        self.assertFalse(state["connected"], "设备消失后不能再报已连接")
+        self.assertTrue(state["lost_reason"], "要带上断线原因，前端才能提示重连")
 
 
 if __name__ == "__main__":  # pragma: no cover

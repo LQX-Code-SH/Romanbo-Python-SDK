@@ -54,7 +54,20 @@ class SerialTransport(Transport):
         ``exclusive=True`` 在 **POSIX 上启用排他打开**（``TIOCEXCL``）——Linux 的串口
         默认是**共享**的，两个进程能同时打开同一个 ``/dev/ttyUSB0`` 并互相打乱收发；
         Windows 本身独占，pyserial 会忽略该参数，所以默认开启即可两边都安全。
+
+    !!! warning
+        设备被拔掉 / 重新枚举后，**句柄本身还是"打开"状态**（``is_open`` 仍为真），但
+        读写必然失败。这类 errno 会被 `_mark_lost` 识别并主动关闭——否则上层会一直以为
+        还连着（实测 2026-09-27：适配器重枚举成 ``ttyUSB1`` 后，控制台仍自报
+        ``connected: true``、保留陈旧的在线列表，直到发命令才报 Input/output error）。
     """
+
+    #: 设备消失后内核报的错误号：句柄还在，但读写必然失败
+    LOST_ERRNOS = frozenset(
+        code for code in (getattr(errno, name, None) for name in
+                          ("EIO", "ENXIO", "ENOENT", "ENODEV", "ESTALE", "EBADF"))
+        if code is not None
+    )
 
     def __init__(self, port: str, baudrate: int = P.BAUDRATE_DEFAULT,
                  *, dtr: bool = True, rts: bool = True, exclusive: bool = True,
@@ -69,6 +82,8 @@ class SerialTransport(Transport):
         self._ser = None
         #: 上一帧写完的时刻（高精度单调时钟）；用于强制 ``P.MIN_FRAME_GAP`` 帧间隔
         self._last_write = 0.0
+        #: 设备消失（拔插/重枚举）时的原因；``None`` 表示未发生
+        self._lost_reason: Optional[str] = None
 
     def open(self) -> None:
         if self._ser is not None:
@@ -89,6 +104,7 @@ class SerialTransport(Transport):
             exclusive=self._exclusive,      # POSIX 排他；Windows 忽略
         )
         self._last_write = 0.0              # 首帧不等待
+        self._lost_reason = None            # 重新打开即视为恢复
         try:
             self._ser.dtr = self._dtr
             self._ser.rts = self._rts
@@ -103,12 +119,27 @@ class SerialTransport(Transport):
         if self._ser is not None:
             try:
                 self._ser.close()
+            except Exception:  # 设备已消失时 close 本身也可能报错，别因此漏掉置空
+                pass
             finally:
                 self._ser = None
 
     @property
     def is_open(self) -> bool:
         return bool(self._ser is not None and getattr(self._ser, "is_open", False))
+
+    @property
+    def lost_reason(self) -> Optional[str]:
+        """设备消失的原因；``None`` 表示未发生（重新 ``open()`` 会清掉）。"""
+        return self._lost_reason
+
+    def _mark_lost(self, exc: BaseException) -> None:
+        """判定「设备已消失」：记下原因并**主动关闭**，让 `is_open` 立刻变假。
+
+        只对 `LOST_ERRNOS` 里的错误号这么做——普通超时、校验和不符不该被当成断线。
+        """
+        self._lost_reason = f"{type(exc).__name__}: {exc}"
+        self.close()
 
     def write(self, frame: bytes) -> None:
         """写出一帧，并保证与上一帧之间至少间隔 `romanbo.protocol.MIN_FRAME_GAP`。
@@ -134,7 +165,12 @@ class SerialTransport(Transport):
         wait = P.MIN_FRAME_GAP - (time.perf_counter() - self._last_write)
         if wait > 0:
             time.sleep(wait)
-        self._ser.write(frame)
+        try:
+            self._ser.write(frame)
+        except OSError as exc:
+            if getattr(exc, "errno", None) in self.LOST_ERRNOS:
+                self._mark_lost(exc)
+            raise
         self._last_write = time.perf_counter()
 
     def read_available(self, timeout: float) -> bytes:
@@ -142,9 +178,14 @@ class SerialTransport(Transport):
             return b""
         deadline = time.perf_counter() + timeout
         while True:
-            waiting = self._ser.in_waiting
-            if waiting:
-                return self._ser.read(waiting)
+            try:
+                waiting = self._ser.in_waiting
+                if waiting:
+                    return self._ser.read(waiting)
+            except OSError as exc:
+                if getattr(exc, "errno", None) in self.LOST_ERRNOS:
+                    self._mark_lost(exc)
+                raise
             if time.perf_counter() >= deadline:
                 return b""
             time.sleep(0.002)
