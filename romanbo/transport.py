@@ -8,10 +8,11 @@
 from __future__ import annotations
 
 import errno
+import re
 import sys
 import time
 from abc import ABC, abstractmethod
-from typing import Dict, Iterable, List, Optional, Sequence
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 from . import protocol as P
 
@@ -425,6 +426,39 @@ def _open_failure_reason(exc: BaseException) -> str:
     return "unknown"
 
 
+#: 给一个 USB 串口适配器放权的 udev 规则（Linux）。
+#:
+#: ``TAG+="uaccess"`` 是**免重新登录**的关键：systemd-logind 会给当前登录的桌面用户在
+#: 节点上补一条 ACL，``udevadm trigger`` 之后立刻可用；``MODE``/``GROUP`` 作为没有
+#: systemd-logind 的场景（或想按组管理时）的兜底。
+UDEV_RULE_TEMPLATE = (
+    'ACTION=="add|change", SUBSYSTEM=="tty", '
+    'ATTRS{idVendor}=="%(vid)s", ATTRS{idProduct}=="%(pid)s", '
+    'MODE="0660", GROUP="dialout", TAG+="uaccess"'
+)
+
+
+def udev_rule_for(vendor_id: str, product_id: str) -> str:
+    """按设备真实的 VID/PID 生成放权规则（十六进制小写，udev 的惯例写法）。
+
+    模板用 ``%(vid)s`` 而不是 ``str.format``：规则里本身有 ``ATTRS{idVendor}`` 这样的
+    花括号，``format()`` 会把它当成占位符而 ``KeyError``。
+    """
+    return UDEV_RULE_TEMPLATE % {"vid": vendor_id.lower(),
+                                 "pid": product_id.lower()}
+
+
+def parse_usb_ids(hwid: str) -> Optional[Tuple[str, str]]:
+    """从 pyserial 的 ``hwid`` 里取 ``(idVendor, idProduct)``。
+
+    USB 串口的 hwid 形如 ``USB VID:PID=0403:6015 SER=DN02AGAB LOCATION=1-10:1.0``；
+    非 USB（主板 ``ttyS*`` 的 ``n/a``）返回 ``None``——那种口没有 VID/PID，写规则也
+    不会匹配。
+    """
+    match = re.search(r"VID:PID=([0-9A-Fa-f]{4}):([0-9A-Fa-f]{4})", hwid or "")
+    return (match.group(1).lower(), match.group(2).lower()) if match else None
+
+
 def is_anonymous_port(row: Dict[str, object]) -> bool:
     """这个端口**没有身份**：Linux 上 ``ttyS0..ttyS31`` 这类主板遗留串口（``description`` 是 n/a）。
 
@@ -495,4 +529,4 @@ def list_serial_ports(*, probe: bool = True,
 
 
 __all__ = ["Transport", "SerialTransport", "MockTransport", "list_serial_ports",
-           "is_anonymous_port", "port_error_hint"]
+           "is_anonymous_port", "port_error_hint", "udev_rule_for", "parse_usb_ids"]

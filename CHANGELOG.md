@@ -6,6 +6,15 @@
 
 ## [Unreleased]
 
+### 新增
+- **`ports --fix`：串口权限一键放权**（Linux）：整条权限流程里唯一需要 root 的一步是"装
+  udev 规则"，其余（判定成因、生成规则、复验）都能自动。现在按设备**真实的 VID:PID**
+  生成规则（不依赖你去仓库里找文件）、把要写入的内容与要执行的操作先打出来、问一次、
+  走 `sudo`、最后复验。**已经能用时什么都不做**（不写系统文件、不触发 udev）；
+  「已被占用」不算权限问题、非 USB 口（没有 VID:PID）不硬塞规则；非交互环境配 `--yes`
+- 规则模板与仓库文件**同源**（`transport.UDEV_RULE_TEMPLATE` / `udev_rule_for` /
+  `parse_usb_ids`），并有测试守住一致性，避免两边漂移
+
 ### 修复
 - **`deploy/99-usb-serial.rules` 加 `TAG+="uaccess"`**：原规则只给 `0660 + dialout`，而
   `dialout` 组要**注销重新登录**才进会话——"装了规则却还是 Permission denied"多半是这个

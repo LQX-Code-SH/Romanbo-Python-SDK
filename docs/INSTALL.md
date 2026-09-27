@@ -63,7 +63,17 @@ python3 -m romanbo --port /dev/ttyUSB0 play my.rsc --ids 8,10 --speed 15
 sudo chmod 666 /dev/ttyUSB1
 ```
 
-**永久解决**（重插 / 换 USB 口 / 重新枚举都有效）——装上随仓库提供的 udev 规则：
+**永久解决**（重插 / 换 USB 口 / 重新枚举都有效）——**一条命令**：
+
+```bash
+python -m romanbo ports --fix        # 按设备真实的 VID:PID 生成规则、sudo 装上、复验
+```
+
+它会先把**要写入的内容**和**要执行的操作**打出来、问一次，然后走 `sudo`（这是整条流程里
+唯一需要 root 的一步——设备节点的权限属于内核/udev，绕不过去），最后把复验结果给你看。
+非交互环境（脚本 / CI）加 `--yes`。**已经能用时它什么都不做**，也不会碰系统文件。
+
+不想用这个命令的话，手工等价操作为：
 
 ```bash
 sudo cp deploy/99-usb-serial.rules /etc/udev/rules.d/

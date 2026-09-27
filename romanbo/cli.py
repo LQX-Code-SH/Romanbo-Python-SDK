@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
 import sys
 import threading
 import time
@@ -25,7 +26,8 @@ from . import golden, joints as J, protocol as P
 from .robot import RomanboRobot
 from .rsc import DEFAULT_ADC, RscProject, write_project
 from .servo import LoadLimitExceeded
-from .transport import MockTransport, is_anonymous_port, list_serial_ports
+from .transport import (MockTransport, is_anonymous_port, list_serial_ports,
+                        parse_usb_ids, udev_rule_for)
 
 #: 软件限力中止时的退出码
 EXIT_LOAD_LIMIT = 4
@@ -199,6 +201,86 @@ def _port_advice(reason: str, posix: bool) -> List[str]:
     return ["端口名可能不对，或适配器刚被拔插；用 ports --json 看详情"]
 
 
+#: ``ports --fix`` 写入的规则文件（内容与仓库里的 deploy/99-usb-serial.rules 同一套）
+UDEV_RULE_PATH = "/etc/udev/rules.d/99-romanbo-usb-serial.rules"
+
+
+def _fix_port_permissions(rows: List[Dict[str, object]],
+                          args: argparse.Namespace) -> int:
+    """``ports --fix``：给"打不开（权限）"的 USB 串口装上 udev 规则。
+
+    **这是整条流程里唯一需要 root 的一步**——设备节点的权限是内核/udev 的事，绕不过去；
+    但可以收敛成一条命令：按设备**真实的 VID:PID** 生成规则（不依赖你去仓库里找文件）、
+    走一次 ``sudo``、再把复验结果给你看。
+
+    **已经能用就什么都不做**（不写系统文件、不触发 udev）；非 USB 的口（没有 VID:PID）
+    只提示、不硬塞规则。
+    """
+    if sys.platform.startswith("win"):
+        print("  Windows 不需要这一步：串口没有 dialout 组限制（打不开多为端口名错或占用）")
+        return 0
+    blocked = [row for row in rows
+               if row["busy"] and row.get("reason") == "permission"]
+    if not blocked:
+        print("  没有需要放权的串口（打不开的原因不是权限，或本来就都能打开）")
+        return 0
+
+    rules: List[str] = []
+    skipped: List[str] = []
+    for row in blocked:
+        ids = parse_usb_ids(str(row.get("hwid") or ""))
+        if ids is None:
+            skipped.append(str(row["device"]))          # 主板串口等：没有 VID/PID
+        else:
+            rule = udev_rule_for(*ids)
+            if rule not in rules:
+                rules.append(rule)
+    if skipped:
+        # 同样别把 32 个 ttyS* 全列出来——汇总成"两个例子 + 个数"
+        sample = "、".join(skipped[:2]) + (f" 等 {len(skipped)} 个"
+                                          if len(skipped) > 2 else "")
+        print(f"  跳过（非 USB 串口，没有 VID:PID 可匹配）：{sample}")
+    if not rules:
+        print("  没有可自动放权的设备；手工办法见 docs/INSTALL.md", file=sys.stderr)
+        return 5
+
+    content = ("# 由 `python -m romanbo ports --fix` 生成（ROMANBO 舵机总线）\n"
+               "# 说明与已知的坑见 docs/INSTALL.md\n" + "\n".join(rules) + "\n")
+    print(f"  将写入 {UDEV_RULE_PATH}：")
+    for rule in rules:
+        print(f"    {rule}")
+    print("  并执行：sudo udevadm control --reload && sudo udevadm trigger "
+          "--action=change --subsystem-match=tty")
+    if not getattr(args, "yes", False):
+        if not sys.stdin.isatty():
+            print("  非交互环境：加 --yes 执行上面这些命令（或照抄手工执行）")
+            return 0
+        if input("  继续？[y/N] ").strip().lower() not in ("y", "yes"):
+            print("  已取消")
+            return 0
+
+    try:
+        # 不捕获输出：sudo 的密码提示走 tty，要让用户看得见也能输入。
+        subprocess.run(["sudo", "tee", UDEV_RULE_PATH], input=content, text=True,
+                       stdout=subprocess.DEVNULL, check=True)
+        subprocess.run(["sudo", "udevadm", "control", "--reload"], check=True)
+        subprocess.run(["sudo", "udevadm", "trigger", "--action=change",
+                        "--subsystem-match=tty"], check=True)
+    except (OSError, subprocess.CalledProcessError) as exc:
+        print(f"  执行失败：{exc}", file=sys.stderr)
+        print("  可手工执行，步骤见 docs/INSTALL.md", file=sys.stderr)
+        return 5
+
+    usable = [str(row["device"]) for row in list_serial_ports() if not row["busy"]]
+    print(f"  复验：可用串口 {usable or '（仍然打不开）'}")
+    if usable:
+        print("  已放权 ✅（若仍报权限不足，注销重新登录一次让 dialout 组生效）")
+        return 0
+    print("  仍打不开：注销重新登录一次再试；仍不行请把上面的输出发出来",
+          file=sys.stderr)
+    return 5
+
+
 def cmd_ports(robot, args) -> int:
     """列出系统串口并**检测是否被占用**（离线命令，不需要 ``--port``）。"""
     try:
@@ -211,6 +293,10 @@ def cmd_ports(robot, args) -> int:
     # 已识别的真实设备排前面：Linux 上 pyserial 还会列出 ttyS0..ttyS31 这类主板遗留串口，
     # 按名字排序会把真正的适配器压到第 35 位——用户要在一屏噪音里找自己的 FT230X。
     ordered = sorted(rows, key=lambda r: (is_anonymous_port(r), str(r["device"])))
+    if getattr(args, "fix", False):
+        # 「修」而不是「列」：不打印整张表（复验结果里已含可用的设备）。
+        return _fix_port_permissions(rows, args)
+
     # 没有接硬件的占位口**默认不列**（这台机器上有 32 个）；但**不静默丢弃**：
     # 末尾报一行「已隐藏 N 个」，`--all` 可看全——诊断命令不该替用户判断"你不需要它"。
     hidden = [row for row in ordered if is_anonymous_port(row)]
@@ -921,6 +1007,9 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("ports", help="列出系统串口并检测是否被占用（离线）")
     p.add_argument("--all", dest="all_ports", action="store_true",
                    help="连没有接硬件的占位口（Linux 上 ttyS0..ttyS31）一起列出")
+    p.add_argument("--fix", action="store_true",
+                   help="给打不开（权限）的 USB 串口装 udev 规则放权（Linux，需 sudo）")
+    p.add_argument("--yes", action="store_true", help="配合 --fix：不询问，直接执行")
     p.set_defaults(func=cmd_ports, need_robot=False)
 
     p = sub.add_parser("export", help="把示教会话导出为 .rsc 工程文件（离线）")

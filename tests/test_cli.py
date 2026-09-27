@@ -52,6 +52,122 @@ class TestCliOfflineCommands(unittest.TestCase):
                     self.assertIn(needle, text, f"{platform} 分支缺少 {needle!r}")
 
 
+class TestUdevRuleHelpers(unittest.TestCase):
+    """规则模板与 VID/PID 解析：``ports --fix`` 与仓库文件必须同源。"""
+
+    def test_shipped_rule_file_matches_the_template(self) -> None:
+        """仓库里的 `deploy/99-usb-serial.rules` 必须等于代码生成的规则（防漂移）。"""
+        import pathlib
+
+        from romanbo.transport import udev_rule_for
+
+        root = pathlib.Path(__file__).resolve().parent.parent
+        text = (root / "deploy" / "99-usb-serial.rules").read_text(encoding="utf-8")
+        rules = [line for line in text.splitlines()
+                 if line and not line.startswith("#")]
+        self.assertEqual(rules, [udev_rule_for("0403", "6015")])
+
+    def test_parse_usb_ids(self) -> None:
+        from romanbo.transport import parse_usb_ids
+
+        self.assertEqual(parse_usb_ids("USB VID:PID=0403:6015 SER=DN02AGAB"),
+                         ("0403", "6015"))
+        self.assertEqual(parse_usb_ids("USB VID:PID=1A86:7523 LOCATION=1-1"),
+                         ("1a86", "7523"))                    # 统一成小写
+        self.assertIsNone(parse_usb_ids("n/a"))               # 主板串口没有 VID:PID
+        self.assertIsNone(parse_usb_ids(""))
+
+
+class TestPortsFix(unittest.TestCase):
+    """``ports --fix``：只对「权限不足的 USB 串口」动手，**能用就不碰系统**。
+
+    这是整条权限流程里唯一需要 root 的一步（设备节点的权限绕不过去），自动化时要守住
+    边界：已经能用时**不写系统文件、不触发 udev**；「已被占用」不是权限问题，也不能去
+    改规则；非 USB 的口（没有 VID:PID）不硬塞规则。
+    """
+
+    USB_HWID = "USB VID:PID=0403:6015 SER=DN02AGAB LOCATION=1-10:1.0"
+
+    @staticmethod
+    def _row(busy: bool, reason: str | None = None, hwid: str = "",
+             device: str = "/dev/ttyUSB0") -> dict:
+        row = {"device": device, "description": "FT230X Basic UART",
+               "hwid": hwid, "busy": busy}
+        if busy:
+            row["error"] = "SerialException"
+            if reason:
+                row["reason"] = reason
+        return row
+
+    def _run_fix(self, rows: list, after: list | None = None):
+        """跑 ``ports --fix --yes``；``after`` 是复验时（第二次枚举）返回的行。"""
+        import contextlib
+        import io
+        from unittest import mock
+
+        state = {"n": 0}
+
+        def fake(*_a, **_k):
+            state["n"] += 1
+            if state["n"] == 1:
+                return list(rows)
+            return list(after if after is not None else rows)
+
+        original = cli.list_serial_ports
+        cli.list_serial_ports = fake
+        try:
+            args = cli.build_parser().parse_args(["ports", "--fix", "--yes"])
+            buf = io.StringIO()
+            with mock.patch.object(cli.subprocess, "run") as run, \
+                    contextlib.redirect_stdout(buf):
+                rc = cli.cmd_ports(None, args)
+        finally:
+            cli.list_serial_ports = original
+        return rc, buf.getvalue(), run
+
+    def test_usable_ports_are_left_alone(self) -> None:
+        rc, text, run = self._run_fix([self._row(False, hwid=self.USB_HWID)])
+        self.assertEqual(rc, 0)
+        run.assert_not_called()
+        self.assertIn("没有需要放权", text)
+
+    def test_busy_ports_are_not_touched(self) -> None:
+        """「已被占用」不是权限问题：不该去写 udev 规则。"""
+        rc, _text, run = self._run_fix([self._row(True, "busy", hwid=self.USB_HWID)])
+        self.assertEqual(rc, 0)
+        run.assert_not_called()
+
+    @unittest.skipIf(sys.platform.startswith("win"), "Linux 专有流程")
+    def test_permission_failure_installs_rule_for_the_real_ids(self) -> None:
+        rows = [self._row(True, "permission", hwid=self.USB_HWID)]
+        usable = [self._row(False, hwid=self.USB_HWID)]
+        rc, text, run = self._run_fix(rows, after=usable)
+        self.assertEqual(rc, 0)
+        self.assertIn("已放权", text)
+        calls = [call.args[0] for call in run.call_args_list]
+        self.assertTrue(any(c[:2] == ["sudo", "tee"] for c in calls), calls)
+        self.assertIn(["sudo", "udevadm", "control", "--reload"], calls)
+        written = run.call_args_list[0].kwargs["input"]
+        self.assertIn('idVendor}=="0403"', written)
+        self.assertIn('idProduct}=="6015"', written)
+        self.assertIn('TAG+="uaccess"', written)
+
+    @unittest.skipIf(sys.platform.startswith("win"), "Linux 专有流程")
+    def test_non_usb_ports_are_skipped(self) -> None:
+        rows = [self._row(True, "permission", hwid="n/a", device="/dev/ttyS0")]
+        rc, text, run = self._run_fix(rows)
+        self.assertEqual(rc, 5)                               # 没有可自动放权的设备
+        run.assert_not_called()
+        self.assertIn("没有 VID:PID", text)
+
+    @unittest.skipIf(sys.platform.startswith("win"), "Linux 专有流程")
+    def test_still_blocked_after_fix_reports_the_fallback(self) -> None:
+        rows = [self._row(True, "permission", hwid=self.USB_HWID)]
+        rc, _text, run = self._run_fix(rows)                  # 复验仍然是打不开
+        self.assertEqual(rc, 5)
+        self.assertTrue(run.called)
+
+
 class TestBrokenPipeHandling(unittest.TestCase):
     """下游提前关掉管道（``... | head``）要安静退出，不能吐栈回溯。
 
