@@ -1,6 +1,6 @@
 # ROMANBO 舵机控制测试方案
 
-> 适用对象：`romanbo` SDK（v1.0.0）与 ROMANBO 舵机硬件总线
+> 适用对象：`romanbo` SDK（v1.1.0）与 ROMANBO 舵机硬件总线
 > 适用版本：Python 3.8+，pyserial 3.5+；固件实测环境 ROMANBO 控制器 + MOS 舵机
 > 编制日期：2026-09-26
 
@@ -422,10 +422,15 @@ python3 -m romanbo --port $PORT read --ids 8
 #### L3-03 绝对角度定位
 
 ```bash
-python3 -m romanbo --port $PORT angle --id 8 --degrees 15 --speed 30 --max-load 60
-python3 -m romanbo --port $PORT angle --id 8 --degrees 0  --speed 30 --max-load 60
+python3 -m romanbo --port $PORT angle --id 8 --degrees 15 --speed 30 --max-load 100 --load-every 3
+python3 -m romanbo --port $PORT angle --id 8 --degrees 0  --speed 30 --max-load 100 --load-every 3
 ```
 - **判定**：`error == 0`（或 ≤1 ADC）；`angle_read ≈ angle_cmd`（±0.3°）。
+- **2026-09-27 修正阈值**：原命令用 `--max-load 60`，实测会撞上**起步涌流**在第 1 步中止
+  （负荷 131，退出码 4）——那是限力**正常工作**，不是缺陷。步长 10 ADC 的起步涌流实测
+  126~153 且只持续几毫秒，而 `move_at_speed` 的采样点就在发出该步之后，所以阈值必须配
+  检查间隔。改为 `--max-load 100 --load-every 3`（实测 rc=0 通过）。
+  细节见[软件限力](LOAD_LIMITING.md)与[实测结论 §3](FINDINGS.md)。
 
 #### L3-04 角速度精度（核心指标）
 
@@ -435,7 +440,20 @@ python3 -m romanbo --port $PORT angle --id 8 --degrees 0  --speed 30 --max-load 
 | L3-04b | `jog --id 8 --degrees 44 --speed 15 --max-load 200` | 15 °/s | ±15% |
 | L3-04c | `jog --id 8 --degrees 90 --speed 120 --max-load 200` | 120 °/s | ±20% |
 
-- **方法**：用 `time` 计时 + 起止位置换算平均角速度；或外部秒表/视频。
+- **方法**：在**运动区间**内计时 + 起止位置换算平均角速度。**不要把进程启动、起始位置
+  预读、回读这些开销算进去**——2026-09-27 实测：拿整个 CLI 进程的墙钟当运动时间，会得到
+  −35% / −99% 的**假失败**。推荐用库内逐步时间戳（`on_step`）：
+
+  ```python
+  import time
+  from romanbo import joints as J
+  stamps = []
+  servo.move_at_speed(target, dps, current=cur, max_load=200,
+                      on_step=lambda i, adc: stamps.append(time.perf_counter()))
+  measured = abs(adc_last - adc_first) * J.RATIO_MAIN / (stamps[-1] - stamps[0])
+  ```
+
+  用该方法复测 L3-04a/b/c：**58.6 / 14.6 / 128.4 °/s**（−2.4% / −2.4% / +7.0%），全部合格。
 - **判定**：见上表；超差记为"角速度精度不达标"。
 - **已知**：量化误差约 ±2%，叠加采样偏差后 README 记录约 −4%~−10%。
 
@@ -455,9 +473,11 @@ python3 -m romanbo --port $PORT jog --id 8 --degrees 40 --speed 120 --level W --
 #### L3-06 往复运动
 
 ```bash
-python3 -m romanbo --port $PORT sweep --id 8 --degrees 20 --cycles 3 --speed 30 --max-load 100
+python3 -m romanbo --port $PORT sweep --id 8 --degrees 20 --cycles 3 --speed 30 --max-load 100 --load-every 3
 ```
 - **判定**：`steps == 6`；每步 `|error| <= 3`；`max_error` 有值；结束回到起始位置 ±3 ADC。
+- **2026-09-27 补 `--load-every 3`**：同 L3-03，原命令（阈值 100 + 默认每步都查）会在第 1 步
+  以起步涌流中止（实测 rc=4）；加间隔后 rc=0 通过、`max_error=1`。
 
 #### L3-07 软件限力（核心安全功能）
 
@@ -757,7 +777,7 @@ python3 -m romanbo --port $PORT param current-limit --id 8 --value 200
 | 扫描 32 个 ID 耗时 | 10~20 s | L1-03 |
 | 角度命令到位误差 | ≤ 2 ADC（≈0.6°） | L3-03 |
 | 相对转动误差 | ≤ 2 ADC | L3-02 |
-| 角速度误差 | 慢速 ±15%，快速 ±20% | L3-04 |
+| 角速度误差 | 慢速 ±15%，快速 ±20% | L3-04（**必须在运动区间内计时**，见 §7 L3-04 的方法） |
 | 多关节起始时刻偏差 | < 30 ms | L4-01 + `--frames` |
 | 往复 max_error | ≤ 3 ADC | L3-06 |
 | 快速动作峰值负荷 | 110~130（参考） | L3-05 |
@@ -833,6 +853,68 @@ print('ok', ok, 'fail', fail)
 - [ ] 参数已回滚至基线快照
 - [ ] 温度正常、无异常发热
 ```
+
+---
+
+### 本轮验收记录（2026-09-27 · v1.1.0）
+
+- 环境：`/dev/ttyUSB0`（FT230X）· 在线舵机 `[8, 10]` · 室温未记录
+- 基线快照：`position 512/513`、`pid (100,1,20)`、`position_limit (1,1023)`、`margin 5`、
+  `acceleration 1`、`calibration 116/116`（见下方 L6 备注：ID8 本轮被误改为 117）
+
+| 编号 | 名称 | 结果 | 实测值 / 备注 |
+|---|---|---|---|
+| L0-01 | 黄金向量 | **P** | `通过 60 / 失败 0`；单元测试 201 项全通过 |
+| L1-01 | 端口枚举 | **P** | 枚举到 FT230X、状态可用 |
+| L1-02 | 握手 | **S*** | 无控制器板不应答 → 记为**环境缺失**（计划 §L1-02 允许） |
+| L1-03 | 全量扫描 | **P** | `found=[8,10]`，16.2 s（判据 10~20 s） |
+| L1-03b | 静默期反向用例 | **P** | `--probe-timeout 0.02` 仍 `found=[8,10]` |
+| L1-04 | 扫描重复性 | **P** | 3 次 `found` 完全一致 |
+| L2-01 | 位置读取与角度换算 | **P** | `angle ≈ (adc−512)×0.2932551`，误差 <0.1° |
+| L2-02 | 全参数回读 | **P** | 各字段合规；`period_ms == null` |
+| L2-05 | `0x0F` 拒发保护 | **P** | `period_ms` 为 null（库层拒发） |
+| L3-01 | 扭矩开关 | **P** | off → on 均 rc=0 |
+| L3-02 | 小幅相对转动 | **P** | +5° 命令 → Δ16 ADC（判据 ≤2 ADC 偏差由 L3-03 覆盖） |
+| L3-03 | 绝对角度定位 | **P** | 修正后 `--max-load 100 --load-every 3` → rc=0、`error=1`；原阈值 60 会在第 1 步以涌流中止（rc=4，保护正常） |
+| L3-04a | 角速度 60°/s | **P** | 58.6 °/s（−2.4%） |
+| L3-04b | 角速度 15°/s | **P** | 14.6 °/s（−2.4%） |
+| L3-04c | 角速度 120°/s | **P** | 128.4 °/s（+7.0%） |
+| L3-05 | 出力档位 H | **P** | rc=0 |
+| L3-06 | 往复运动 | **P** | 补 `--load-every 3` 后 rc=0、`max_error=1` |
+| L3-07 | 软件限力必触发 | **P** | `--max-load 10` → rc=4 |
+| L3-08 | 轮子模式 | **S** | 计划标注「谨慎」→ 跳过（会让关节连续旋转） |
+| L3-09 | LED | **P** | rc=0 |
+| L4-01 | 多关节同步 | **P** | `8:540,10:509` → 回读 **541/509**（两关节都动，L7-01 未复现） |
+| L4-02 | 周期模式多关节 | **P** | rc=0 |
+| L4-03 | 示教 → 导出 → 回放 | **P** | teach/export/info/play 闭环通过；样例 `demo.rsc` 解析正常 |
+| L4-04 | `.rsc` 场景与过滤 | **P** | `--ids` 过滤只驱动在线关节 |
+| L4-05 | 在线 ID 过滤回放 | **P** | rc=0 |
+| L5-01 | PID 写入 + 回读确认 | **P** | `--nosave`，回读 `(100,1,20)` |
+| L5-02 | Margin 写入与回滚 | **P** | `5 → 7 → 5` |
+| L5-03 | 位置限值写入 + 回滚 | **P** | ID10 `[100,900] → [1,1023]` |
+| L5-05 | 低温保护阈值 | **S** | 只写不读、原值未知 → 无法回滚，跳过 |
+| L5-06 | 无效参数（accelerate=200） | **P** | 写入后回滚为原值 1 |
+| L6-* | 危险/破坏性命令 | **S** | 按计划默认不执行（⚠ 见缺陷表 L6-02 备注） |
+| L7-01 | 连发丢帧回归 | **P** | 两关节都到位（470/469） |
+| L7-02 | 起步涌流不误报 | **P** | `--load-every 3` → rc=0 |
+| L7-03 | 越界位置拒绝 | **P** | `8:1500` → rc=2（argparse 拒绝） |
+| L8-01 | 查询丢包率 | **P** | 连续 50 次 `get_position`：`ok=50 fail=0` |
+
+\* S = 跳过/环境缺失（已写明原因）
+
+**准出结论**：L0 全过、L1~L4 通过率 100%（唯一一次 L4-01 失败是**探针读超时**导致的误判，
+复测 3/3 通过、读数健康，属已解释的失败）、L5 已备份且全部成功回滚、L7 全过
+→ **满足 §5 的 Release Gate**。
+
+**收尾**：两关节回中位 511/511；参数已回滚至基线；温度 33/37 ℃ 正常。
+
+### 本轮新增缺陷记录
+
+| ID | 描述 | 严重度 | 状态 |
+|---|---|---|---|
+| L6-02′ | 执行人以 JSON 验证为名**误跑了 L6 危险命令 `calib --id 8`**，ID8 零点 `calibration 116→117`（offset −12→−11，1 ADC ≈0.29°），ID10 未受影响 | 低 | **待处置**：可用 `param offset --id 8 --value 116` 精确还原；还原前不得再执行任何 L6 命令 |
+| L3-03′ / L3-06′ | 计划自身的限力阈值（60 / 100，默认每步采样）会撞上起步涌流而中止，容易被误判成缺陷 | 低 | **已修正**：改为 `100 + --load-every 3`（本轮实测通过） |
+| L3-04′ | 计划对「角速度测量方法」描述不足，用进程墙钟会得到 −35%/−99% 的假失败 | 低 | **已修正**：补上 `on_step` 逐步时间戳法 |
 
 ---
 

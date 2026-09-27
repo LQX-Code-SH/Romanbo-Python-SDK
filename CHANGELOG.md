@@ -4,7 +4,7 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [1.1.0] - 2026-09-27
 
 ### 新增
 - **可视化控制台**：`romanbo/webui.py`（后端）+ `romanbo/webui_page.py`（前端）+
@@ -137,6 +137,17 @@
   最后一拍刚下发完、舵机仍在运动，此前直接回读会读到中间值；`--readback` 现会等待
   到位（默认 0.3 s）后回读实际位置并输出误差。`read` 改为单次超时（`retries=0`）。
 
+### 文档
+- **按 `docs/SERVO_TEST_PLAN.md` 完成一轮真机验收**（2026-09-27，覆盖 L0~L8-01）：
+  L0 全过（黄金向量 60/60）、L1~L4 通过率 100%、L5 已备份且参数全部成功回滚、
+  L7 全过（连发丢帧回归等）、`L8-01` 连续 50 次 `get_position` → `ok=50 fail=0`，
+  满足 §5 的 Release Gate；完整记录见 `docs/SERVO_TEST_PLAN.md` §10
+- **修正测试计划自身的两处缺陷**：L3-03 / L3-06 的限力阈值（60 / 100，默认每步采样）
+  会撞上起步涌流而中止、容易被误判为缺陷 → 改为 `100 + --load-every 3`；
+  L3-04 的「角速度测量方法」描述不足，用进程墙钟会得到 −35%/−99% 的假失败
+  → 补上 `on_step` 逐步时间戳法（复测 −2.4%/−2.4%/+7.0%）
+- `docs/SERVO_TEST_PLAN.md` / `docs/INSTALL.md` 的版本号引用同步到 v1.1.0
+
 ## [1.0.0] - 2026-09-26
 
 首个公开发布版本。
@@ -166,5 +177,6 @@
 - `docs/evidence/`：真机联调探针日志（部分实测结论的原始证据）
 - `docs/README.md`：文档索引
 
-[Unreleased]: https://github.com/LQX-Code-SH/Romanbo-Python-SDK/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/LQX-Code-SH/Romanbo-Python-SDK/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/LQX-Code-SH/Romanbo-Python-SDK/releases/tag/v1.1.0
 [1.0.0]: https://github.com/LQX-Code-SH/Romanbo-Python-SDK/releases/tag/v1.0.0

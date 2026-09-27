@@ -38,7 +38,7 @@ from .rsc import MotionFrame, RscProject  # noqa: F401
 from .servo import LoadLimitExceeded, Servo, ServoConfig  # noqa: F401
 from .transport import MockTransport, SerialTransport, Transport  # noqa: F401
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 __all__ = [
     "RomanboRobot", "connect", "HandshakeResult",

@@ -22,7 +22,7 @@ pip install pyserial
 pip install -e .                     # 需要开发工具时：pip install -e ".[dev]"
 # C. 构建 wheel（分发用；产物含控制台脚本 romanbo）
 python -m pip wheel . --no-deps -w dist
-#    产物：romanbo-1.0.0-py3-none-any.whl，内含 10 个模块 + py.typed + entry_points.txt
+#    产物：romanbo-1.1.0-py3-none-any.whl，内含 10 个模块 + py.typed + entry_points.txt
 ```
 
 也可不安装，直接在仓库根目录以模块方式运行：
