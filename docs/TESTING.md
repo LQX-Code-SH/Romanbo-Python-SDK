@@ -3,7 +3,7 @@
 ## 日常自检
 
 ```bash
-python -m unittest discover -s tests -t .      # 201 项单元测试（全部通过，无跳过）
+python -m unittest discover -s tests -t .      # 236 项单元测试（全部通过，无跳过）
 python -m romanbo selftest                     # 60 条基准报文（逐字节比对）
 python -m romanbo --mock scan                  # 离线模拟器冒烟
 python examples/04_offline_frames.py           # 打印每条指令的真实报文
@@ -37,6 +37,25 @@ python -m mkdocs serve                         # 本地预览 http://127.0.0.1:8
 ```
 
 CI 会在 PR 上以 `--strict` 构建文档站，并校验 API 参考确实已生成。
+
+## 本机模拟 CI 条件
+
+CI 上跑红的、本机却全绿的原因，多半是**环境差异**（本机插着适配器、有某个设备节点）。
+要提前发现，可以在本机把那个条件"关掉"再跑一遍：
+
+```bash
+# 例：把 /dev/ttyUSB* 视作不存在（模拟 CI 上没有适配器）
+python - <<'PY'
+import os, sys, unittest
+real = os.path.exists
+os.path.exists = lambda p: False if str(p).startswith("/dev/ttyUSB") else real(p)
+sys.argv = ["x", "discover", "-s", "tests", "-t", "."]
+unittest.main(module=None, argv=sys.argv, exit=False)
+PY
+```
+
+同理可用 `mock.patch.object(sys, "platform", "win32")` 跑到 Windows 分支——别把"只在某个
+平台上炸"的断言留给 CI 去发现（2026-09-27 一天内因此红了两次）。
 
 ## 真机验证
 

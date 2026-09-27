@@ -146,7 +146,10 @@ class TestPortsFix(unittest.TestCase):
         rc, text, run = self._run_fix([self._row(False, hwid=self.USB_HWID)])
         self.assertEqual(rc, 0)
         run.assert_not_called()
-        self.assertIn("没有需要放权", text)
+        if sys.platform.startswith("win"):
+            self.assertIn("Windows 不需要这一步", text)
+        else:
+            self.assertIn("没有需要放权", text)
 
     def test_busy_ports_are_not_touched(self) -> None:
         """「已被占用」不是权限问题：不该去写 udev 规则。"""

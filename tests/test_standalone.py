@@ -15,6 +15,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from romanbo.robot import RomanboRobot  # noqa: E402
 from romanbo.transport import MockTransport  # noqa: E402
 
+#: 给 ``SerialTransport`` 一个**真实存在**的路径。
+#:
+#: ``write()`` / ``read_available()`` 会检查设备节点是否还在（拔插后读写只会静默超时，
+#: 见 `SerialTransport._ensure_alive`），所以不能再用 ``/dev/ttyUSB0`` 这种"本机可能有、
+#: CI 上必然没有"的名字——本机插着适配器时全绿、CI 上五平台全红（2026-09-27 踩过）。
+#: 这些用例的句柄由 fake serial 顶替，只要路径存在即可；Windows 分支不做该检查。
+_EXISTING_DEVICE = "/dev/null"
+
 #: 屏蔽 pyserial 后仍应可用的最小用法
 NO_SERIAL_SCRIPT = r"""
 import importlib.abc
@@ -91,11 +99,11 @@ class TestCrossPlatform(unittest.TestCase):
             Serial = _FakePort
 
         with mock.patch.dict(sys.modules, {"serial": _FakeSerial()}):
-            transport = SerialTransport("/dev/ttyUSB0", 115200)
+            transport = SerialTransport(_EXISTING_DEVICE, 115200)
             transport.open()
-            # Linux 端口名原样传递，绝不能被改写成 COMx
-            self.assertEqual(transport.name, "/dev/ttyUSB0")
-            self.assertEqual(captured["port"], "/dev/ttyUSB0")
+            # 端口名原样传递，绝不能被改写成 COMx
+            self.assertEqual(transport.name, _EXISTING_DEVICE)
+            self.assertEqual(captured["port"], _EXISTING_DEVICE)
             self.assertEqual(captured["baudrate"], 115200)
             # POSIX 排他打开（Windows 下 pyserial 会忽略该参数）
             self.assertTrue(captured["exclusive"])
@@ -224,7 +232,7 @@ class TestFrameGap(unittest.TestCase):
 
         stamps: list[float] = []
         with self._install_fake_serial(stamps), self._fake_clock() as clock:
-            transport = SerialTransport("/dev/ttyUSB0", 115200)
+            transport = SerialTransport(_EXISTING_DEVICE, 115200)
             transport.open()
             transport.write(b"\xFF\xFF\x01\x06\x05\xF6")
             transport.close()
@@ -238,7 +246,7 @@ class TestFrameGap(unittest.TestCase):
 
         stamps: list[float] = []
         with self._install_fake_serial(stamps), self._fake_clock() as clock:
-            transport = SerialTransport("/dev/ttyUSB0", 115200)
+            transport = SerialTransport(_EXISTING_DEVICE, 115200)
             transport.open()
             try:
                 transport.write(b"\xFF\xFF\x01\x06\x05\xF6")     # t = 1000.0
@@ -257,7 +265,7 @@ class TestFrameGap(unittest.TestCase):
 
         stamps: list[float] = []
         with self._install_fake_serial(stamps), self._fake_clock() as clock:
-            transport = SerialTransport("/dev/ttyUSB0", 115200)
+            transport = SerialTransport(_EXISTING_DEVICE, 115200)
             transport.open()
             try:
                 transport.write(b"\xFF\xFF\x01\x06\x05\xF6")     # t = 1000.0
@@ -276,7 +284,7 @@ class TestFrameGap(unittest.TestCase):
 
         stamps: list[float] = []
         with self._install_fake_serial(stamps):
-            transport = SerialTransport("/dev/ttyUSB0", 115200)
+            transport = SerialTransport(_EXISTING_DEVICE, 115200)
             transport.open()
             try:
                 for _ in range(3):
