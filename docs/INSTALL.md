@@ -61,6 +61,7 @@ python3 -m romanbo --port /dev/ttyUSB0 play my.rsc --ids 8,10 --speed 15
 | 共享性 | 打开即独占 | **默认可多进程同时打开** → 本库用 `exclusive=True`（`TIOCEXCL`）排他 |
 | 可能被抢占 | 其它上位机 / 串口助手 | 其它上位机 / ModemManager（`sudo systemctl stop ModemManager`） |
 | 定时精度 | `time.sleep` ≈ 15 ms 抖动；`time.monotonic()` 在 CPython ≤ 3.12 粒度约 15.6 ms | 更好，步进逼近的角速度更准 |
+| 节拍漂移 | 库内计时一律用 `perf_counter()`，且节拍按**绝对时刻**排拍（`deadline += dt`）——`sleep` 的过冲、负荷回读的往返都只在**当拍**体现，下一拍补回来，不会逐拍累积 | 同上 |
 | 输出编码 | 输出被重定向时 stdout 用区域编码（cp1252/cp936），中文会崩 → CLI 已自动切 UTF-8 | 默认 UTF-8 |
 
 临时放开权限（**重插 USB 后失效**，节点名也可能变——先 `python -m romanbo ports` 看当前名字）：

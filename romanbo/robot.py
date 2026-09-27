@@ -432,6 +432,11 @@ class RomanboRobot:
         every = max(1, int(load_check_every))
         watch_ids = sorted(moving)
         peaks: Dict[int, int] = {}
+        #: 同 `Servo.move_at_speed`：按**绝对时刻**排拍（``deadline`` 每拍累加 ``dt``），
+        #: 否则 ``sleep`` 的过冲会逐拍累积（Windows 的 ``Sleep`` 粒度约 15.6 ms，一拍才
+        #: 100 ms，长动作最坏慢 13%）。这样负荷回读的往返、sleep 过冲都会在下一拍补回来，
+        #: 总时长 ≈ N×dt + 一次过冲；帧间隔由 `romanbo.protocol.MIN_FRAME_GAP` 兜底。
+        deadline = time.perf_counter()
         for tick in range(ticks):
             for id_, plan in moving.items():
                 adc = plan[tick] if tick < len(plan) else plan[-1]
@@ -439,7 +444,9 @@ class RomanboRobot:
                     continue
                 self.servo(id_).set_position(adc, torque=torque, level=level)
                 last_sent[id_] = adc
-            sleep(dt)
+            deadline += dt
+            budget = deadline - time.perf_counter()
+            sleep(budget if budget > 0 else 0.0)
             if max_load is not None and (tick + 1) % every == 0:
                 watch = watch_ids[(tick // every) % len(watch_ids)]
                 load = self.servo(watch).get_load()

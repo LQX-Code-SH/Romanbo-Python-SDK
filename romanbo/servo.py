@@ -185,7 +185,8 @@ class Servo:
         :param max_load: **软件限力阈值**（0..255）。每 ``load_check_every`` 步
             回读一次实测负荷（``0x18``），超过阈值即**停止继续下发**并抛出
             `LoadLimitExceeded`——这台硬件没有可用的硬件力矩环，这是唯一
-            的限力手段。注意每次负荷回读会占用 ~10~30 ms 往返（会略微拖慢节奏）。
+            的限力手段。每次负荷回读会占用 ~10~30 ms 往返，但节拍按**绝对时刻**排拍，
+            这点耗时会在下一拍补回来（不会累积拖慢）。
         :param load_check_every: 每几步抽检一次负荷（默认 ``1`` = 每步都查）。
             采样点是**发出该步之后立刻**，所以会把「起步涌流」一起量进去：真机实测
             单步冲击与**步长**成正比（步长 10 ADC 约 130~150、20 ADC 约 155、
@@ -202,8 +203,18 @@ class Servo:
         every = max(1, int(load_check_every))
         sent: List[int] = []
         self.last_peak_load = None
+        #: 节拍按**绝对时刻**排（``deadline`` 每拍累加 ``dt``），而不是"每拍睡 dt"。
+        #:
+        #: 后者会把 ``sleep`` 自身的过冲**逐拍累积**：Windows 的 ``Sleep`` 粒度约 15.6 ms，
+        #: 而一拍才 100 ms，长动作会一路慢下去（最坏约 −13%，正好吃掉文档承诺的 ±4% 角速度）。
+        #: 按绝对时刻后，某一拍迟到（不管是 sleep 过冲还是负荷回读的往返）都会在下一拍补回来
+        #: ——总时长 ≈ N×dt **加上一次过冲**，不再累积。补发不会挤爆总线：帧间隔由
+        #: `romanbo.protocol.MIN_FRAME_GAP` 兜底。
+        #:
+        #: 计时一律用 ``perf_counter()``：Windows 上 ``monotonic()`` 在 CPython <= 3.12
+        #: 只有约 15.6 ms 粒度，预算会偏 ±15%（同 `transport.SerialTransport.write` 那个坑）。
+        deadline = time.perf_counter()
         for index, (dt, adc) in enumerate(steps, start=1):
-            started = time.perf_counter()           # 计时一律用高精度时钟，见下
             self.set_position(adc, level=level)
             sent.append(adc)
             if on_step is not None:
@@ -215,14 +226,9 @@ class Servo:
                 if load > max_load:
                     raise LoadLimitExceeded(self._id, load, int(max_load), index, adc)
             if wait:
-                if max_load is None:
-                    sleep(dt)                       # 常规路径：严格按节拍
-                else:
-                    # 限力路径要扣掉回读负荷的往返耗时，因此必须用高精度时钟：
-                    # Windows 上 ``monotonic()`` 在 CPython <= 3.12 只有约 15.6 ms 粒度，
-                    # 而一拍才 100 ms —— 预算会偏 ±15%，直接吃掉文档承诺的 ±4% 角速度
-                    budget = dt - (time.perf_counter() - started)
-                    sleep(budget if budget > 0 else 0.0)
+                deadline += dt
+                budget = deadline - time.perf_counter()
+                sleep(budget if budget > 0 else 0.0)
         return sent
 
     def set_angle(self, degrees: float, *, period_ms: Optional[int] = None,

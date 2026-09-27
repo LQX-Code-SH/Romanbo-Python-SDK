@@ -166,6 +166,67 @@ class TestServoStepwise(unittest.TestCase):
             self.assertAlmostEqual(seconds, 0.1, places=6,
                                    msg="预算被粗时钟污染（用了 monotonic？）")
 
+    def test_overshooting_sleep_does_not_accumulate_drift(self) -> None:
+        """``sleep`` 的过冲不能**逐拍累积**——按绝对时刻排拍才能压住。
+
+        背景：Windows 的 ``Sleep`` 粒度约 15.6 ms，而一拍才 100 ms。按"每拍睡 dt"实现时，
+        每拍都多睡一点，长动作一路慢下去（N 拍就慢 N×过冲，实测最坏约 −13%，正好吃掉文档
+        承诺的 ±4% 角速度）。按绝对时刻排拍后，迟到会被下一拍的短睡眠补回来：总时长 ≈
+        N×dt **加一次过冲**，不再累积。
+
+        做法：让每次 ``sleep`` 多睡 30 ms 并如实推进受控时钟。
+        """
+        from unittest import mock
+
+        state = {"perf": 1000.0, "sleeps": []}
+
+        def perf_counter() -> float:
+            state["perf"] += 1e-9                # 每次读都前进一点，保证轮询循环能退出
+            return state["perf"]
+
+        def sleep(seconds: float) -> None:
+            state["sleeps"].append(seconds)
+            state["perf"] += seconds + 0.03      # 每次都过冲 30 ms
+
+        with mock.patch.object(time, "perf_counter", perf_counter):
+            sent = self.robot.servo(1).move_at_speed(
+                614, 60, current=512, interval_ms=100, max_load=255,
+                load_check_every=3, sleep=sleep)
+
+        elapsed = state["perf"] - 1000.0
+        expected = len(sent) * 0.1
+        self.assertGreaterEqual(len(state["sleeps"]), 5, "样本太少")
+        self.assertAlmostEqual(
+            elapsed, expected, delta=0.06,
+            msg=f"过冲被累积了：实测 {elapsed:.3f}s、期望约 {expected:.3f}s"
+                f"（逐拍累积的旧实现会是 {len(sent) * 0.13:.3f}s）")
+
+    def test_multi_joint_move_does_not_accumulate_drift(self) -> None:
+        """多关节路径（`RomanboRobot.move`）同样按绝对时刻排拍。"""
+        from unittest import mock
+
+        state = {"perf": 500.0, "sleeps": []}
+
+        def perf_counter() -> float:
+            state["perf"] += 1e-9
+            return state["perf"]
+
+        def sleep(seconds: float) -> None:
+            state["sleeps"].append(seconds)
+            state["perf"] += seconds + 0.03
+
+        with mock.patch.object(time, "perf_counter", perf_counter):
+            self.robot.move({1: 614}, speed_dps=60, start={1: 512},
+                            step_interval_ms=100, max_load=255,
+                            load_check_every=3, sleep=sleep)
+
+        elapsed = state["perf"] - 500.0
+        expected = len(state["sleeps"]) * 0.1
+        self.assertGreaterEqual(len(state["sleeps"]), 5, "样本太少")
+        self.assertAlmostEqual(
+            elapsed, expected, delta=0.06,
+            msg=f"多关节路径的过冲被累积了：{elapsed:.3f}s vs 期望约 {expected:.3f}s")
+
     def test_sweep_period_path_uses_injected_sleep(self) -> None:
         """``period_ms`` 分支也必须走注入的 ``sleep``，否则测试会真的睡下去。
 
@@ -234,7 +295,12 @@ class TestPlayWithSpeed(unittest.TestCase):
         self.assertEqual([_positions_for(self.robot, i)[-1] for i in (1, 2, 3)],
                          [614, 614, 614])
         self.assertIn(0.25, slept)                       # 保持姿势的帧
-        self.assertEqual(len([s for s in slept if s == 0.1]), 5)
+        # 节拍睡眠：按**绝对时刻**排拍，预算是「到第 i 拍目标时刻还剩多久」。
+        # 这里注入的 `slept.append` 只记录、不真的睡（不倒时钟），所以后续预算会逐步累加
+        # （0.1、0.2…）——这是正确的：真正"每拍 ≈ 100 ms"的语义由
+        # test_overshooting_sleep_does_not_accumulate_drift 用受控时钟守着。
+        # 这里只确认节拍路径确实走到了 sleep（第一拍尚未被"不睡"影响）。
+        self.assertAlmostEqual(slept[1], 0.1, delta=0.01, msg="第一拍预算应 ≈100 ms")
 
     def test_missing_start_positions_jump_to_first_frame(self) -> None:
         self.robot.play(self.frames, speed_dps=60, step_interval_ms=100,
