@@ -626,6 +626,25 @@ class TestLostPortReporting(unittest.TestCase):
     """
 
     @staticmethod
+    def _device_path() -> str:
+        """给 ``SerialTransport`` 一个**真实存在**的路径。
+
+        新逻辑（`_ensure_alive`）会检查设备节点还在不在，所以不能再用
+        ``"/dev/ttyUSB1"`` 这种测试机上不存在的名字。这里给一个指向 ``/dev/null`` 的
+        临时符号链接——只让 ``os.path.exists`` 为真，句柄本身由测试注入的假对象顶替，
+        不碰真串口。Windows 分支不做路径检查，随便给个端口名即可（也不去创建符号链接，
+        那需要额外权限）。
+        """
+        import os
+        import tempfile
+
+        if sys.platform.startswith("win"):
+            return "COM1"
+        link = os.path.join(tempfile.mkdtemp(), "fake-tty")
+        os.symlink("/dev/null", link)
+        return link
+
+    @staticmethod
     def _dead_handle():
         """一个"设备已消失"的假句柄：``is_open`` 仍为真，读写全部 EIO。"""
 
@@ -653,7 +672,7 @@ class TestLostPortReporting(unittest.TestCase):
     def _lost_transport(self):
         from romanbo.transport import SerialTransport
 
-        port = SerialTransport("/dev/ttyUSB1")
+        port = SerialTransport(self._device_path())
         port._ser = self._dead_handle()          # 直接放一个已消失的句柄
         return port
 
@@ -687,11 +706,50 @@ class TestLostPortReporting(unittest.TestCase):
             def close():
                 pass
 
-        port = SerialTransport("/dev/ttyUSB1")
+        port = SerialTransport(self._device_path())
         port._ser = _Quiet()
         self.assertEqual(port.read_available(0.02), b"")
         self.assertTrue(port.is_open, "没数据 ≠ 断线")
         self.assertIsNone(port.lost_reason)
+
+    @unittest.skipIf(sys.platform.startswith("win"), "节点路径检查是 POSIX 专有")
+    def test_vanished_device_node_is_detected_even_when_io_stays_silent(self) -> None:
+        """拔掉后读写可能只**静默超时**，所以还得看设备节点是否还在。
+
+        真机日志（2026-09-27）：拔掉适配器后只得到 ``TimeoutError: 等待回包超时``，
+        ``is_open`` 仍为真、``lost_reason`` 为空——控制台会一直以为还连着。光靠 errno
+        抓不住这种情况，设备节点消失才是确定信号。
+        """
+        import os
+        import tempfile
+
+        from romanbo.transport import SerialTransport
+
+        link = os.path.join(tempfile.mkdtemp(), "fake-tty")
+        os.symlink("/dev/null", link)
+
+        class _Silent:
+            """读写都不报错、但永远没数据的句柄（模拟"拔掉后静默超时"）。"""
+            is_open = True
+
+            @property
+            def in_waiting(self):
+                return 0
+
+            @staticmethod
+            def close():
+                pass
+
+        port = SerialTransport(link)
+        port._ser = _Silent()
+        self.assertEqual(port.read_available(0.02), b"")     # 静默：不报错、也没数据
+        self.assertTrue(port.is_open)
+
+        os.remove(link)                                     # 节点消失 == 拔掉
+        with self.assertRaises(OSError):
+            port.read_available(0.02)
+        self.assertFalse(port.is_open, "节点都没了就不能再报已连接")
+        self.assertIn("设备节点已不存在", port.lost_reason or "")
 
     def test_console_stops_claiming_connected_after_the_device_vanishes(self) -> None:
         from romanbo.robot import RomanboRobot

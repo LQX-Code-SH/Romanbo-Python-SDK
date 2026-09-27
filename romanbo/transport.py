@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import errno
+import os
 import re
 import sys
 import time
@@ -142,6 +143,23 @@ class SerialTransport(Transport):
         self._lost_reason = f"{type(exc).__name__}: {exc}"
         self.close()
 
+    def _ensure_alive(self) -> None:
+        """POSIX 上顺带看一眼**设备节点还在不在**；判定消失时抛 `OSError`。
+
+        为什么光看 errno 不够：真机实测（2026-09-27）拔掉适配器后，读写**只会静默超时**
+        ——``in_waiting`` 返回 0、``read`` 返回空，连 ``write`` 都可能不报错，于是上层只
+        看到"舵机未应答"，`is_open` 一直为真，控制台还以为连着呢。设备节点消失是**确定**
+        信号，代价是一次 ``stat``（微秒级，相对 2 ms 的轮询间隔可忽略）。
+
+        Windows 上端口名（``COM3``）不是文件系统路径，不做这个检查。
+        """
+        if sys.platform.startswith("win") or not self._port:
+            return
+        if not os.path.exists(self._port):
+            exc = OSError(errno.ENOENT, f"设备节点已不存在: {self._port}")
+            self._mark_lost(exc)
+            raise exc
+
     def write(self, frame: bytes) -> None:
         """写出一帧，并保证与上一帧之间至少间隔 `romanbo.protocol.MIN_FRAME_GAP`。
 
@@ -163,6 +181,7 @@ class SerialTransport(Transport):
         """
         if not self.is_open:
             raise RuntimeError(f"串口未打开: {self._port}")
+        self._ensure_alive()
         wait = P.MIN_FRAME_GAP - (time.perf_counter() - self._last_write)
         if wait > 0:
             time.sleep(wait)
@@ -177,6 +196,7 @@ class SerialTransport(Transport):
     def read_available(self, timeout: float) -> bytes:
         if not self.is_open:
             return b""
+        self._ensure_alive()
         deadline = time.perf_counter() + timeout
         while True:
             try:

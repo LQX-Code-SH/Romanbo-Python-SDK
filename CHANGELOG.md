@@ -16,6 +16,12 @@
   `parse_usb_ids`），并有测试守住一致性，避免两边漂移
 
 ### 修复
+- **设备消失的判定补上「设备节点是否还在」**（`SerialTransport._ensure_alive`）：真机实测
+  拔掉适配器后读写**只会静默超时**（`in_waiting` 返回 0、`read` 返回空、`write` 甚至不报错），
+  按 errno 根本抓不住——上层只看到"舵机未应答"，`is_open` 一直为真、控制台以为还连着
+  （2026-09-27 真机日志：`TimeoutError: 等待回包超时` + `is_open=True` +`lost_reason=None`）。
+  现在 POSIX 下每次读写顺带 `stat` 一次设备节点（微秒级，相对 2 ms 轮询可忽略），
+  节点消失即判定断开并把 `OSError` 抛给上层；Windows 的端口名不是文件系统路径，不做该检查
 - **规则文件名改为 `60-` 前缀**（原 `99-`）——**uaccess 真正生效的关键**：udev 按文件名顺序
   执行规则，而执行 `uaccess` 内建的是系统规则 `73-seat-late.rules`，`99-` 排在其后，于是
   tag 加上了（`udevadm info` 里 `CURRENT_TAGS=:uaccess:` 清清楚楚）**ACL 却永远不生成**，
