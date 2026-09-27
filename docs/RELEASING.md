@@ -148,10 +148,15 @@ git push origin vx.y.z
 
 `requires-python` 当前是 `>=3.8`，CI 覆盖 3.8~3.13；用到新语法时要同步收窄这个范围。
 
-## 附：v1.1.0 的当前状态
+## 附：首次发布的实际经过（1.1.0 / 1.1.1）
 
-- **GitHub Release 已创建** ✓（含 `dist/*` 附件）
-- **PyPI 未发布** ✗ —— `PUBLISH_PYPI` 未设置，`发布到 PyPI` 作业按设计跳过
-  （首次发版时它曾因未配 Trusted Publishing 而认证失败，把工作流染红，之后改为默认跳过）
-- **待办**：完成 §1 的三步后，`1.1.0` 这个版本号仍未被占用，可直接
-  Actions → Release → **Run workflow**（`workflow_dispatch`）补发，无需重新打标签
+- **v1.1.0 只发布了 GitHub Release，PyPI 上没有它**：首次发版时 PyPI 作业因未配
+  Trusted Publishing 而**认证失败**，把工作流染红；之后改成"未配置就默认跳过"，
+  于是那次运行里该作业是 `skipped`——注意 GitHub **不能重跑 `skipped` 的作业**，
+  所以想补发只能重新打标签
+- **PyPI 从 1.1.1 开始**：`v1.1.0` 之后 `main` 上又积累了一批修复（断线判定、端口诊断、
+  `ports --fix`、udev 规则前缀……），直接拿它们发 "1.1.0" 会与 tag `v1.1.0` 的内容不一致，
+  所以按正常流程发了 1.1.1（`1.1.0` 在 PyPI 上就空着，无害）
+- **`workflow_dispatch` 是安全的重发路径**：`github-release` 作业加了
+  `if: startsWith(github.ref, 'refs/tags/')` 守卫，手动触发只会重跑"构建 + 发布到 PyPI"，
+  不会再造一个 release；再加 `skip-existing: true` 就能在 PyPI 已上传过的情况下重跑

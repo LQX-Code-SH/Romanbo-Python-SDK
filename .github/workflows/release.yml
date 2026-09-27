@@ -94,6 +94,10 @@ jobs:
   github-release:
     name: 创建 GitHub Release
     needs: build
+    # 只在**标签推送**时创建 release：手动触发（workflow_dispatch）没有标签，
+    # 否则会拿分支名去建一个莫名其妙的 release。有了这道守卫，`workflow_dispatch`
+    # 就是安全的"只重跑构建 + 发布到 PyPI"路径。
+    if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:
       contents: write

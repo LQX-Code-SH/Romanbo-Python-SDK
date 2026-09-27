@@ -4,7 +4,7 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [1.1.1] - 2026-09-27
 
 ### 新增
 - **`ports --fix`：串口权限一键放权**（Linux）：整条权限流程里唯一需要 root 的一步是"装
@@ -276,6 +276,7 @@
 - `docs/evidence/`：真机联调探针日志（部分实测结论的原始证据）
 - `docs/README.md`：文档索引
 
-[Unreleased]: https://github.com/LQX-Code-SH/Romanbo-Python-SDK/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/LQX-Code-SH/Romanbo-Python-SDK/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/LQX-Code-SH/Romanbo-Python-SDK/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/LQX-Code-SH/Romanbo-Python-SDK/releases/tag/v1.1.0
 [1.0.0]: https://github.com/LQX-Code-SH/Romanbo-Python-SDK/releases/tag/v1.0.0
