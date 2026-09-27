@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import errno
 import time
 from abc import ABC, abstractmethod
 from typing import Dict, Iterable, List, Optional, Sequence
@@ -365,13 +366,31 @@ class MockTransport(Transport):
         return P.make_frame(P.ack_for(cmd), sid)
 
 
+def _open_failure_reason(exc: BaseException) -> str:
+    """把「打不开」的原因粗分为 ``permission`` / ``busy`` / ``unknown``。
+
+    pyserial 会把各种失败统一包成 `SerialException`——**类型不再区分原因**
+    （实测 2026-09-27：权限不足拿到的是 ``SerialException: [Errno 13] Permission
+    denied``，*不是* ``PermissionError``）。所以判定依据只能是 ``errno``：按类型判断
+    会把「权限不足」报成「已被占用」，把人引向"找占用进程"——而当时并没有任何进程
+    持有那个设备。
+    """
+    code = getattr(exc, "errno", None)
+    if code in (errno.EACCES, errno.EPERM):
+        return "permission"
+    if code in (errno.EBUSY, errno.EAGAIN):
+        return "busy"
+    return "unknown"
+
+
 def list_serial_ports(*, probe: bool = True,
                       baudrate: int = P.BAUDRATE_DEFAULT) -> List[Dict[str, object]]:
     """枚举系统串口，并（默认）实测能否打开。
 
-    返回 ``[{"device", "description", "hwid", "busy", "error"?}]``。``busy=True``
-    表示打不开——POSIX 下多为**权限不足**或**已被占用**（本库用排他打开探测，
-    见 `SerialTransport` 的说明）。
+    返回 ``[{"device", "description", "hwid", "busy", "error"?, "reason"?}]``。
+    ``busy=True`` 表示打不开，``reason`` 给出粗分类：``"permission"``（权限不足，
+    POSIX 下通常是用户不在 ``dialout`` 组）／``"busy"``（已被别的进程排他持有）／
+    ``"unknown"``。本库用排他打开探测（见 `SerialTransport` 的说明）。
 
     :raises RuntimeError: 未安装 pyserial
     """
@@ -396,6 +415,7 @@ def list_serial_ports(*, probe: bool = True,
             except Exception as exc:                          # noqa: BLE001
                 row["busy"] = True
                 row["error"] = type(exc).__name__
+                row["reason"] = _open_failure_reason(exc)
         rows.append(row)
     return rows
 

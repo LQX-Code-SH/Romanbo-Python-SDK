@@ -198,12 +198,32 @@ def cmd_ports(robot, args) -> int:
     for row in rows:
         mark = "不可用" if row["busy"] else "可用"
         print(f"  {row['device']:<22} {mark:<6} {row['description']}")
-        if row["busy"]:
+        if not row["busy"]:
+            continue
+        # 「权限不足」与「已被占用」的处置完全不同，必须分开报。原先一句话把两种可能都
+        # 列上（"多为权限问题（dialout 组）或已被占用"），遇到**适配器重枚举后新节点没放权**
+        # 的情况（ttyUSB0 → ttyUSB1，权限退回默认的 0660 root:dialout）很容易被误判成
+        # "有进程在占用"——实际没有任何进程持有它。判定依据是 ``reason``（由 errno 推出），
+        # **不是异常类型**：pyserial 把权限不足也包成 ``SerialException``（实测 2026-09-27）。
+        reason = row.get("reason")
+        if reason == "permission":
             if posix:
-                print("           打不开 → 多为权限问题（dialout 组）或已被占用；"
-                      "查占用：sudo lsof <设备>")
+                print("           权限不足（不是被占用）→ 加入 dialout 组后重新登录：")
+                print("                      sudo usermod -aG dialout $USER")
+                print("                      临时放权（重插 USB 后失效）："
+                      f"sudo chmod 666 {row['device']}")
+            else:
+                print("           权限/访问被拒 → 关闭占用它的程序，或换一个端口试试")
+        elif reason == "busy" or posix:
+            if posix:
+                print("           已被占用 → 有进程正以排他方式持有它。查持有者：")
+                print(f"                      sudo lsof {row['device']}   或   "
+                      f"sudo fuser -v {row['device']}")
             else:
                 print("           被占用 → 关闭占用程序/串口助手，或拔插 USB 适配器释放")
+        else:
+            print(f"           打不开（{row.get('error', '未知')}）→ 端口名可能不对，"
+                  "或适配器刚被拔插；用 ports --json 看详情")
     if posix:
         print("  提示：POSIX 串口默认可被多个进程同时打开，「可用」不代表独占；"
               "本库以 exclusive 方式打开。")

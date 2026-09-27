@@ -305,6 +305,115 @@ class TestMainErrorMessages(unittest.TestCase):
         self.assertNotIn("Traceback", err.getvalue())
 
 
+class TestPortsDiagnosis(unittest.TestCase):
+    """``ports`` 打不开时的原因必须分开报：**权限不足 ≠ 已被占用**。
+
+    原先两者共用一句提示（"多为权限问题（dialout 组）或已被占用"）。当适配器重枚举、
+    节点从 ``ttyUSB0`` 变成 ``ttyUSB1`` 时，新节点退回默认权限 ``0660 root:dialout``
+    —— 用户不在 ``dialout`` 组就报 ``PermissionError``，但提示里那句"或已被占用"
+    会把人引向"找占用进程"（实测 2026-09-27 就误判过：当时没有任何进程持有它）。
+    """
+
+    @staticmethod
+    def _render(rows: list) -> tuple:
+        import contextlib
+        import io
+
+        original = cli.list_serial_ports
+        cli.list_serial_ports = lambda *a, **k: list(rows)
+        try:
+            args = cli.build_parser().parse_args(["ports"])
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc = cli.cmd_ports(None, args)
+        finally:
+            cli.list_serial_ports = original
+        return rc, buf.getvalue()
+
+    @staticmethod
+    def _row(busy: bool, reason: str | None = None,
+             device: str = "/dev/ttyUSB1") -> dict:
+        row = {"device": device, "description": "FT230X Basic UART",
+               "hwid": "", "busy": busy}
+        if busy:
+            row["error"] = "SerialException"
+            if reason:
+                row["reason"] = reason
+        return row
+
+    def test_permission_denied_is_not_reported_as_busy(self) -> None:
+        rc, text = self._render([self._row(True, "permission")])
+        self.assertEqual(rc, 0)
+        self.assertIn("权限", text)
+        self.assertNotIn("lsof", text, "权限问题不该让人去找占用进程")
+        self.assertNotIn("fuser", text)
+        if not sys.platform.startswith("win"):        # 组名与命令是 POSIX 专有
+            self.assertIn("dialout", text)
+
+    @unittest.skipIf(sys.platform.startswith("win"), "Windows 无 lsof/fuser")
+    def test_busy_points_to_the_holder(self) -> None:
+        _, text = self._render([self._row(True, "busy")])
+        self.assertIn("已被占用", text)
+        self.assertIn("lsof", text)
+
+    @unittest.skipIf(sys.platform.startswith("win"), "Windows 分支不涉及 dialout")
+    def test_unknown_reason_does_not_point_at_the_group_hint(self) -> None:
+        """认不出 errno 时不要硬归类（别把人往"加 dialout 组"上引）。"""
+        _, text = self._render([self._row(True, "unknown")])
+        self.assertNotIn("dialout", text)
+
+    def test_available_port_gets_no_diagnosis(self) -> None:
+        _, text = self._render([self._row(False)])
+        self.assertIn("可用", text)
+        self.assertNotIn("lsof", text)
+        self.assertNotIn("dialout", text)
+
+
+class TestOpenFailureReason(unittest.TestCase):
+    """``_open_failure_reason`` 必须按 ``errno`` 分类，**不能**按异常类型。
+
+    实测 2026-09-27：权限不足时 pyserial 抛的是 ``SerialException: [Errno 13]
+    Permission denied``——它是 ``OSError`` 的子类，**类型与"已被占用"完全相同**。
+    按类型判断会把"权限不足"报成"已被占用"，把人引向"找占用进程"（当时并没有任何
+    进程持有那个设备）。按类型判断的旧写法在真机上是错的。
+    """
+
+    def test_errno_mapping(self) -> None:
+        import errno as errno_mod
+
+        from romanbo.transport import _open_failure_reason
+
+        cases = {
+            errno_mod.EACCES: "permission",
+            errno_mod.EPERM: "permission",
+            errno_mod.EBUSY: "busy",
+            errno_mod.EAGAIN: "busy",
+            errno_mod.ENOENT: "unknown",                  # 适配器刚被拔掉
+            None: "unknown",                              # errno 缺失，不猜
+        }
+        for code, expected in cases.items():
+            with self.subTest(errno=code):
+                exc = OSError(code, "x") if code is not None else OSError("x")
+                self.assertEqual(_open_failure_reason(exc), expected)
+
+    def test_pyserial_exception_shape(self) -> None:
+        """复刻 pyserial 的真实构造方式（``SerialException(errno, message)``）。"""
+        from romanbo.transport import _open_failure_reason
+
+        class SerialException(OSError):                   # pyserial 的基类就是 OSError
+            pass
+
+        self.assertEqual(
+            _open_failure_reason(
+                SerialException(13, "could not open port /dev/ttyUSB1: "
+                                    "Permission denied: '/dev/ttyUSB1'")),
+            "permission")
+        self.assertEqual(
+            _open_failure_reason(
+                SerialException(16, "Could not exclusively lock port /dev/ttyUSB1")),
+            "busy")
+
+
 class TestTargetsValidation(unittest.TestCase):
     """``--targets`` 的位置/ID 范围要在参数层挡住。
 

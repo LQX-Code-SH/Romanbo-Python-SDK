@@ -55,6 +55,8 @@ nav:
       - 真机测试记录: TEST_REPORTS.md
       - 证据日志: evidence/README.md
       - API 参考: api.md
+  - 维护:
+      - 发版与发布: RELEASING.md
 
 plugins:
   - search:

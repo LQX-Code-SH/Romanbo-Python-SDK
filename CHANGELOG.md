@@ -6,7 +6,26 @@
 
 ## [Unreleased]
 
+### 修复
+- **`ports` 不再把「权限不足」误报成「已被占用」**（`cli.cmd_ports` +
+  `transport.list_serial_ports` 新增 `reason` 字段）：原先两者共用一句提示（"多为权限
+  问题（dialout 组）或已被占用"），遇到**适配器重枚举后新节点没放权**的情况
+  （`ttyUSB0` → `ttyUSB1`，权限退回默认的 `0660 root:dialout`）很容易被当成有进程在
+  占用它——实际没有任何进程持有。现在按 `errno` 分流：`EACCES`/`EPERM` → 给出
+  `usermod -aG dialout` 与临时 `chmod` 的处置；`EBUSY` → 给出 `lsof` / `fuser` 查持有者。
+  **不能按异常类型判断**：pyserial 把权限不足也包成 `SerialException`（`[Errno 13]`），
+  与「已被占用」的异常类型完全相同（真机实测）
+
+### CI
+- **Release 工作流加标签/版本一致性守卫**：标签必须等于 `v` + `romanbo.__version__`，
+  否则构建阶段直接失败——避免把 1.1.0 的包打上 `v1.2.0` 的标签发出去
+
 ### 文档
+- **新增[发版与发布](docs/RELEASING.md)**：PyPI Trusted Publishing 首次配置的五处字段、
+  GitHub environment 与仓库变量的两个坑（必须建在 Variables、值必须是**小写** `true`）、
+  每次发版的固定流程、发布后验证清单、出错处置（`invalid-publisher`、版本号不可重用、
+  yank 的语义）、版本号约定
+- `CONTRIBUTING.md` 的「发布」收敛为速记版 + 指向上面的新页，发布细节不再存两份
 - **「测试记录」独立成页**（`docs/TEST_REPORTS.md`）：测试方案只保留用例定义、判定门限与
   记录模板（该记什么），每轮执行的环境、基线快照、逐条结果、准出结论与当轮新增缺陷
   移到记录页（实际记了什么）。文档站导航同步按「使用说明 / 规格与验证记录」两组对齐

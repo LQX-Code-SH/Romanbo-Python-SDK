@@ -142,6 +142,7 @@ with RomanboRobot("/dev/ttyUSB0") as robot:      # 或 connect("COM3", mock=True
 | [真机测试记录](docs/TEST_REPORTS.md) | 每轮环境、基线快照、逐条结果、准出结论、当轮缺陷 |
 | [证据日志](docs/evidence/README.md) | 真机探针原始收发字节 |
 | [API 参考](docs/api.md) | 由 docstring 自动生成，不会与代码脱节 |
+| [发版与发布](docs/RELEASING.md) | PyPI Trusted Publishing 配置、发版流程、发布后验证、出错处置 |
 
 在线文档站：<https://lqx-code-sh.github.io/Romanbo-Python-SDK/>（由 `docs/` 构建）
 

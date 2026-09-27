@@ -67,35 +67,24 @@ python -m mkdocs build --strict   # CI 用；任何告警都会导致失败
 
 ## 发布
 
-推送 `v*` 标签即可触发 `.github/workflows/release.yml`：构建 sdist + wheel →
-`twine check` 与产物内容校验 → **从 sdist 安装并跑自检**（确认发布物真的可用）→
-发布到 PyPI → 创建 GitHub Release。
+推送 `v*` 标签触发 `.github/workflows/release.yml`：构建 sdist + wheel → `twine check`
+与产物内容校验 → **从 sdist 安装并跑自检** → 发布到 PyPI → 创建 GitHub Release。
 
-### 首次配置：PyPI Trusted Publishing（无需 API token）
+**逐步操作清单见 [`docs/RELEASING.md`](docs/RELEASING.md)**（首次配置 PyPI Trusted
+Publishing 的五处字段、每次发版、发布后验证、发错了怎么补救）。速记版：
 
-1. 在 PyPI 侧添加 pending publisher：Account → Publishing → Add a new pending publisher
-   - PyPI Project Name：`romanbo`
-   - Owner：`LQX-Code-SH`，Repository：`Romanbo-Python-SDK`
-   - Workflow name：`release.yml`，Environment name：`pypi`
-2. 在 GitHub 仓库侧建同名 environment：Settings → Environments → `pypi`
-   （建议加 Required reviewers，避免误发）
-3. 建**仓库变量** `PUBLISH_PYPI = true`：Settings → Secrets and variables → Actions
-   → Variables。**不设这个变量时 `release.yml` 的 PyPI 作业会被跳过**（因为未配置
-   Trusted Publishing 时它必然认证失败，会把整个工作流染红，而 GitHub Release
-   其实已经成功）
-
-### 发版步骤
-
-1. 更新 `CHANGELOG.md`：把 `[Unreleased]` 的内容移到新版本号下并填写日期；
-2. 同步 `romanbo/__init__.py` 的 `__version__`——**打包版本取自它**；
-3. 提交后打标签并推送：
+1. 更新 `CHANGELOG.md`：`[Unreleased]` → 新版本号 + 日期；
+2. 同步 `romanbo/__init__.py` 的 `__version__`——**打包版本取自它**，且必须与标签
+   一致（`v` + 版本号；工作流里有守卫会拦下不一致的情况）；
+3. 提交并等 CI 绿，再打标签推送：
 
    ```bash
    git tag -a v1.0.1 -m "romanbo 1.0.1"
    git push origin v1.0.1
    ```
 
-4. 等待 `Release` 工作流完成即可在 PyPI 与 Releases 页看到产物。
+4. 首次发布前要先完成 `docs/RELEASING.md` §1 的三步配置，否则 PyPI 作业会被跳过
+   （GitHub Release 仍会正常创建）。
 
 > 本地可先自查：`python -m build && python -m twine check dist/*`。
 > 其中 `project.license` 的 TOML 表形式会打印一条弃用告警，属预期（原因见 `pyproject.toml` 注释）。

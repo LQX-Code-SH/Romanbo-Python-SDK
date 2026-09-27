@@ -15,6 +15,7 @@ python -m romanbo [全局选项] <命令> [命令选项]
 | 命令 | 说明与主要选项 |
 |---|---|
 | `selftest` | 离线校验报文编码（基准向量，60 条） |
+| `ports` | 枚举串口并**实测能否打开**（离线，不需要 `-p`）。打不开时按 `errno` 区分两种成因并给出处置：`EACCES` → 权限不足（`dialout` 组）；`EBUSY` → 已被别的进程排他持有（`lsof`/`fuser` 查） |
 | `handshake` | 连接自检（型号 + 固件版本，需控制器板） |
 | `scan` | `--start --end --probe-timeout`（默认 0.15 s）、`--quarantine`（探测失败后的总线静默期，默认 0.4 s） |
 | `read` | `--ids 8,10`（ADC 与角度）；对不存在的 ID 只等一次超时 |
@@ -58,6 +59,15 @@ python -m romanbo [全局选项] <命令> [命令选项]
 python -m romanbo --port COM3 --json read --ids 8,10 | jq '.["8"].adc'
 python -m romanbo --port COM3 --json move --targets 8:600 --speed 30 --readback \
     | jq .readback
+```
+
+`ports --json` 回一个**数组**：每项含 `device` / `description` / `hwid` / `busy`；打不开时
+再加 `error`（异常类名）与 `reason`（`permission` / `busy` / `unknown`，由 `errno` 推出）：
+
+```bash
+python -m romanbo --json ports | jq '.[] | select(.busy)'
+# {"device":"/dev/ttyUSB1","description":"FT230X Basic UART","hwid":"...",
+#  "busy":true,"error":"SerialException","reason":"permission"}
 ```
 
 > 结果 JSON 是**缩进美化**的多行文档。**所有命令**在 `--json` 下都有结果，包括确认类

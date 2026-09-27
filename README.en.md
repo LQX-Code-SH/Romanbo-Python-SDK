@@ -213,6 +213,7 @@ Details: [`docs/SAFETY.md`](docs/SAFETY.md) and [`docs/SERVO_SPEC.md`](docs/SERV
 | [Test reports](docs/TEST_REPORTS.md) | per-run environment, baseline, case results, verdict |
 | [Evidence log](docs/evidence/README.md) | raw probe traffic |
 | [API reference](docs/api.md) | auto-generated from docstrings |
+| [Releasing](docs/RELEASING.md) | PyPI Trusted Publishing setup, release flow, post-release checks |
 
 Docs site: <https://lqx-code-sh.github.io/Romanbo-Python-SDK/>
 
