@@ -13,4 +13,6 @@ include mkdocs.yml
 recursive-include docs *.md
 
 # Linux 串口权限的 udev 规则（装法见 docs/INSTALL.md）
-include deploy/99-usb-serial.rules
+# 用通配符而不是写死文件名：规则文件从 99- 改名为 60- 时，写死的写法会**静默漏掉**
+# （1.1.1 的 sdist 就漏了，发布后才在 PyPI 上核对出来）
+include deploy/*.rules

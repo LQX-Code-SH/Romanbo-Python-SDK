@@ -160,3 +160,12 @@ git push origin vx.y.z
 - **`workflow_dispatch` 是安全的重发路径**：`github-release` 作业加了
   `if: startsWith(github.ref, 'refs/tags/')` 守卫，手动触发只会重跑"构建 + 发布到 PyPI"，
   不会再造一个 release；再加 `skip-existing: true` 就能在 PyPI 已上传过的情况下重跑
+- **v1.1.1 已发布**（2026-09-27）：Release 工作流三个作业全绿，PyPI 上有 `1.1.1`，
+  干净环境 `pip install romanbo==1.1.1` + `selftest` 通过
+
+!!! tip "发布后验证的两个坑"
+    - **国内镜像有同步延迟**：`pip config` 指向清华源时，刚发布的版本可能几分钟内仍报
+      "找不到版本"。核对用官方源：`pip install --index-url https://pypi.org/simple …`，
+      或直接看 <https://pypi.org/pypi/romanbo/json>
+    - **sdist 内容要核对**：`MANIFEST.in` 写死文件名的话，文件改名后会**静默漏掉**
+      （1.1.1 的 `deploy/` 就是这么漏的）——所以那里用通配符，并有测试守着

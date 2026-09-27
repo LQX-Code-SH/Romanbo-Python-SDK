@@ -84,6 +84,19 @@ class TestUdevRuleHelpers(unittest.TestCase):
         deploy = pathlib.Path(__file__).resolve().parent.parent / "deploy" / name
         self.assertTrue(deploy.exists(), f"仓库里应有同名文件：{deploy}")
 
+    def test_manifest_includes_the_rule_file(self) -> None:
+        """sdist 必须带上规则文件——写死文件名在改名后会**静默漏掉**。
+
+        1.1.1 就是这样：规则从 ``99-`` 改名 ``60-`` 时忘了同步 MANIFEST.in，发布后在
+        PyPI 上核对 sdist 才发现（`deploy/` 不见了）。所以这里用通配符，并加测试守住。
+        """
+        import pathlib
+
+        root = pathlib.Path(__file__).resolve().parent.parent
+        manifest = (root / "MANIFEST.in").read_text(encoding="utf-8")
+        self.assertIn("deploy/*.rules", manifest,
+                      "MANIFEST.in 应用通配符，免得改名后又漏")
+
     def test_parse_usb_ids(self) -> None:
         from romanbo.transport import parse_usb_ids
 

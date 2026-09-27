@@ -4,6 +4,14 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### 修复
+- **`MANIFEST.in` 改用通配符 `deploy/*.rules`**：写死文件名时，规则从 `99-` 改名 `60-` 后
+  sdist 会**静默漏掉** `deploy/`（1.1.1 的 sdist 就是这样——发布后在 PyPI 上核对才发现），
+  并加了测试守住；`docs/RELEASING.md` 补上"发布后验证的两个坑"（国内镜像有同步延迟、
+  sdist 内容要核对）
+
 ## [1.1.1] - 2026-09-27
 
 ### 新增
