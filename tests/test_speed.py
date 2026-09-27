@@ -140,7 +140,7 @@ class TestServoStepwise(unittest.TestCase):
         """
         from unittest import mock
 
-        state = {"mono": 100.0, "perf": 1000.0, "sleeps": list[float]()}
+        state = {"mono": 100.0, "perf": 1000.0, "sleeps": []}
 
         def coarse_monotonic() -> float:
             state["mono"] += 0.015625           # 每次读取前进一个 Windows tick
