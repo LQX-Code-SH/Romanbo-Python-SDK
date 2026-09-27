@@ -52,6 +52,28 @@ class TestCliOfflineCommands(unittest.TestCase):
                     self.assertIn(needle, text, f"{platform} 分支缺少 {needle!r}")
 
 
+class TestBrokenPipeHandling(unittest.TestCase):
+    """下游提前关掉管道（``... | head``）要安静退出，不能吐栈回溯。
+
+    ``ports --all`` 会打 30 多行，接个 ``head`` / ``grep -q`` 很常见；原先写入撞上
+    ``EPIPE`` 会抛 ``BrokenPipeError`` 并打印整段 traceback（实测 2026-09-27）。
+    """
+
+    def test_broken_pipe_exits_quietly(self) -> None:
+        from unittest import mock
+
+        with mock.patch.object(cli, "_main",
+                               side_effect=BrokenPipeError(32, "Broken pipe")):
+            self.assertEqual(cli.main(["ports"]), 0)
+
+    def test_other_errors_still_propagate(self) -> None:
+        from unittest import mock
+
+        with mock.patch.object(cli, "_main", side_effect=RuntimeError("boom")):
+            with self.assertRaises(RuntimeError):
+                cli.main(["ports"])
+
+
 class TestStdioEncoding(unittest.TestCase):
     """stdout 编码不足时 CLI 不能崩。
 
@@ -315,14 +337,14 @@ class TestPortsDiagnosis(unittest.TestCase):
     """
 
     @staticmethod
-    def _render(rows: list) -> tuple:
+    def _render(rows: list, argv: list | None = None) -> tuple:
         import contextlib
         import io
 
         original = cli.list_serial_ports
         cli.list_serial_ports = lambda *a, **k: list(rows)
         try:
-            args = cli.build_parser().parse_args(["ports"])
+            args = cli.build_parser().parse_args(argv or ["ports"])
             buf = io.StringIO()
             with contextlib.redirect_stdout(buf):
                 rc = cli.cmd_ports(None, args)
@@ -331,10 +353,9 @@ class TestPortsDiagnosis(unittest.TestCase):
         return rc, buf.getvalue()
 
     @staticmethod
-    def _row(busy: bool, reason: str | None = None,
-             device: str = "/dev/ttyUSB1") -> dict:
-        row = {"device": device, "description": "FT230X Basic UART",
-               "hwid": "", "busy": busy}
+    def _row(busy: bool, reason: str | None = None, device: str = "/dev/ttyUSB1",
+             description: str = "FT230X Basic UART") -> dict:
+        row = {"device": device, "description": description, "hwid": "", "busy": busy}
         if busy:
             row["error"] = "SerialException"
             if reason:
@@ -367,6 +388,99 @@ class TestPortsDiagnosis(unittest.TestCase):
         self.assertIn("可用", text)
         self.assertNotIn("lsof", text)
         self.assertNotIn("dialout", text)
+
+    def test_advice_is_grouped_not_repeated_per_port(self) -> None:
+        """建议只打一次（按原因汇总）。
+
+        真机实测（2026-09-27）：这台机器 pyserial 枚举出 34 个 ``ttyS*`` 占位口，每个都
+        各打一份三行的建议——100 多行噪音，把真正的 ``ttyUSB0`` 与建议一起埋掉；而且对
+        没有接硬件的 ``ttyS*`` 建议 ``chmod`` 是误导。
+        """
+        rows = [self._row(True, "permission", f"/dev/ttyS{i}") for i in range(34)]
+        rows.append(self._row(True, "permission", "/dev/ttyUSB0"))
+        _, text = self._render(rows)
+        self.assertEqual(text.count("加入 dialout 组"), 1, "建议应只打一次")
+        self.assertEqual(text.count("不可用 35 个"), 1)
+        self.assertIn("/dev/ttyUSB0", text)          # 汇总里要点出真实设备名
+
+    def test_reasons_are_grouped_separately(self) -> None:
+        """两种原因各汇总一次，不混在一起。"""
+        rows = [self._row(True, "permission", "/dev/ttyS0"),
+                self._row(True, "busy", "/dev/ttyUSB0")]
+        _, text = self._render(rows)
+        self.assertIn("权限不足", text)
+        self.assertIn("已被占用", text)
+        if not sys.platform.startswith("win"):
+            self.assertIn("dialout", text)
+            self.assertIn("lsof", text)
+
+    def test_hardwareless_ports_are_hidden_by_default(self) -> None:
+        """没接硬件的占位口默认不列，但**不静默丢弃**——要报隐藏了几个、怎么全看。
+
+        真机实测（2026-09-27）：这台机器枚举出 32 个 ``ttyS*`` 占位口，真正的 FT230X
+        排在最后；`ports` 是拿来"找设备 + 排权限"的，不该让它埋在一屏噪音里。
+        """
+        rows = [self._row(False, device=f"/dev/ttyS{i}", description="n/a")
+                for i in range(32)]
+        rows.append(self._row(False, device="/dev/ttyUSB0"))
+        _, text = self._render(rows)
+        device_lines = [line for line in text.splitlines()
+                        if line.strip().startswith("/dev/")]
+        self.assertEqual(len(device_lines), 1, f"只应列出真适配器：{device_lines}")
+        self.assertIn("/dev/ttyUSB0", device_lines[0])
+        self.assertIn("已隐藏 32 个", text)
+        self.assertIn("--all", text)
+
+    def test_all_flag_lists_hardwareless_ports(self) -> None:
+        rows = [self._row(False, device="/dev/ttyS0", description="n/a"),
+                self._row(False, device="/dev/ttyUSB0")]
+        _, text = self._render(rows, ["ports", "--all"])
+        self.assertIn("/dev/ttyS0", text)
+        self.assertNotIn("已隐藏", text)
+
+    def test_json_follows_the_same_filter(self) -> None:
+        """``--json`` 与文本一致（默认过滤），``--all`` 才全给。"""
+        import json
+
+        rows = [self._row(False, device="/dev/ttyS0", description="n/a"),
+                self._row(False, device="/dev/ttyUSB0")]
+        _, text = self._render(rows, ["ports", "--json"])
+        self.assertEqual([r["device"] for r in json.loads(text)], ["/dev/ttyUSB0"])
+        _, text_all = self._render(rows, ["ports", "--json", "--all"])
+        self.assertEqual([r["device"] for r in json.loads(text_all)],
+                         ["/dev/ttyUSB0", "/dev/ttyS0"])
+
+    def test_nothing_left_after_filtering_still_points_at_all(self) -> None:
+        rows = [self._row(False, device="/dev/ttyS0", description="n/a")]
+        _, text = self._render(rows)
+        self.assertIn("未发现串口设备", text)
+        self.assertIn("--all", text)
+
+    def test_hardwareless_ports_get_no_permission_advice(self) -> None:
+        """``--all`` 看全时，占位口标"可忽略"，不要给 ``chmod`` 建议。
+
+        它们打不开是因为**没有硬件**（``ttyS0..31`` 是主板遗留口），给权限建议会把人
+        带偏——真适配器在别处。
+        """
+        rows = [self._row(True, "permission", f"/dev/ttyS{i}", description="n/a")
+                for i in range(32)]
+        rows.append(self._row(True, "permission", "/dev/ttyUSB0"))
+        _, text = self._render(rows, ["ports", "--all"])
+        self.assertIn("没有接硬件的占位口（32 个", text)
+        self.assertIn("可忽略", text)
+        self.assertEqual(text.count("加入 dialout 组"), 1, "只该给真实设备那组一份建议")
+        anonymous_block = text.split("没有接硬件的占位口", 1)[1].split("·", 1)[0]
+        self.assertNotIn("chmod", anonymous_block)
+
+    def test_identified_devices_are_listed_first(self) -> None:
+        """``--all`` 下已识别的适配器仍要排在 ``ttyS*`` 占位口之前（真机上它排第 35）。"""
+        rows = [self._row(False, device=f"/dev/ttyS{i}", description="n/a")
+                for i in range(34)]
+        rows.append(self._row(False, device="/dev/ttyUSB0"))
+        _, text = self._render(rows, ["ports", "--all"])
+        first_device_line = next(line for line in text.splitlines()
+                                 if line.strip().startswith("/dev/"))
+        self.assertIn("/dev/ttyUSB0", first_device_line, "已识别设备应排第一")
 
 
 class TestOpenFailureReason(unittest.TestCase):

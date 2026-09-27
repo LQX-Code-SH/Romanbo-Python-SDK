@@ -15,10 +15,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import threading
 import time
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from . import golden, joints as J, protocol as P
 from .robot import RomanboRobot
@@ -179,6 +180,33 @@ def _port_hint(port: str, exc: BaseException) -> str:
               "拔插一次 USB 串口适配器即可释放。")
 
 
+#: 端口打不开时的原因标签（``reason`` 由 errno 推出，见 `transport._open_failure_reason`）
+_PORT_REASON_LABEL = {"permission": "权限不足（不是被占用）", "busy": "已被占用"}
+
+
+def _is_anonymous_port(row: Dict[str, object]) -> bool:
+    """没有身份的端口：Linux 上 ``ttyS0..ttyS31`` 这类主板遗留串口（``description`` 是 n/a）。
+
+    它们要排在已识别设备**之后**，免得真正的适配器被埋在一屏里。
+    """
+    return str(row.get("description") or "").strip() in ("", "n/a")
+
+
+def _port_advice(reason: str, posix: bool) -> List[str]:
+    """某个原因对应的处置（多行；缩进由调用方加）。"""
+    if reason == "permission":
+        if posix:
+            return ["加入 dialout 组后重新登录：sudo usermod -aG dialout $USER",
+                    "临时放权（重插 USB 后失效）：sudo chmod 666 <设备>"]
+        return ["关闭占用它的程序，或换一个端口试试"]
+    if reason == "busy":
+        if posix:
+            return ["有进程正以排他方式持有它；查持有者："
+                    "sudo lsof <设备> 或 sudo fuser -v <设备>"]
+        return ["关闭占用程序/串口助手，或拔插 USB 适配器释放"]
+    return ["端口名可能不对，或适配器刚被拔插；用 ports --json 看详情"]
+
+
 def cmd_ports(robot, args) -> int:
     """列出系统串口并**检测是否被占用**（离线命令，不需要 ``--port``）。"""
     try:
@@ -188,42 +216,54 @@ def cmd_ports(robot, args) -> int:
         print(str(exc), file=sys.stderr)
         return 1
 
+    # 已识别的真实设备排前面：Linux 上 pyserial 还会列出 ttyS0..ttyS31 这类主板遗留串口，
+    # 按名字排序会把真正的适配器压到第 35 位——用户要在一屏噪音里找自己的 FT230X。
+    ordered = sorted(rows, key=lambda r: (_is_anonymous_port(r), str(r["device"])))
+    # 没有接硬件的占位口**默认不列**（这台机器上有 32 个）；但**不静默丢弃**：
+    # 末尾报一行「已隐藏 N 个」，`--all` 可看全——诊断命令不该替用户判断"你不需要它"。
+    hidden = [row for row in ordered if _is_anonymous_port(row)]
+    shown = (ordered if getattr(args, "all_ports", False)
+             else [row for row in ordered if not _is_anonymous_port(row)])
+
     if args.json:
-        _emit(rows, args)
+        _emit(shown, args)
         return 0
-    if not rows:
+    if not shown:
         print("未发现串口设备（检查适配器是否插好；Linux 上通常形如 /dev/ttyUSB0）")
+        if hidden:
+            print(f"  另有 {len(hidden)} 个没有接硬件的占位口已隐藏"
+                  f"（如 {hidden[0]['device']}）；加 --all 可看")
         return 0
     posix = not sys.platform.startswith("win")
-    for row in rows:
+    for row in shown:
         mark = "不可用" if row["busy"] else "可用"
         print(f"  {row['device']:<22} {mark:<6} {row['description']}")
-        if not row["busy"]:
-            continue
-        # 「权限不足」与「已被占用」的处置完全不同，必须分开报。原先一句话把两种可能都
-        # 列上（"多为权限问题（dialout 组）或已被占用"），遇到**适配器重枚举后新节点没放权**
-        # 的情况（ttyUSB0 → ttyUSB1，权限退回默认的 0660 root:dialout）很容易被误判成
-        # "有进程在占用"——实际没有任何进程持有它。判定依据是 ``reason``（由 errno 推出），
-        # **不是异常类型**：pyserial 把权限不足也包成 ``SerialException``（实测 2026-09-27）。
-        reason = row.get("reason")
-        if reason == "permission":
-            if posix:
-                print("           权限不足（不是被占用）→ 加入 dialout 组后重新登录：")
-                print("                      sudo usermod -aG dialout $USER")
-                print("                      临时放权（重插 USB 后失效）："
-                      f"sudo chmod 666 {row['device']}")
-            else:
-                print("           权限/访问被拒 → 关闭占用它的程序，或换一个端口试试")
-        elif reason == "busy" or posix:
-            if posix:
-                print("           已被占用 → 有进程正以排他方式持有它。查持有者：")
-                print(f"                      sudo lsof {row['device']}   或   "
-                      f"sudo fuser -v {row['device']}")
-            else:
-                print("           被占用 → 关闭占用程序/串口助手，或拔插 USB 适配器释放")
-        else:
-            print(f"           打不开（{row.get('error', '未知')}）→ 端口名可能不对，"
-                  "或适配器刚被拔插；用 ports --json 看详情")
+
+    # 排查建议**按原因汇总打一次**，不再每个端口各打一份：原先 34 个占位口会刷出 100 多行，
+    # 把真正的设备和建议一起埋掉；而且对没接硬件的 ttyS* 建议 chmod 属于误导——它打不开
+    # 是因为没有硬件，不是权限。原因仍按 errno 分类（`reason`），**不看异常类型**：
+    # pyserial 把权限不足也包成 ``SerialException``，与「已被占用」的类型完全相同。
+    broken = [row for row in shown if row["busy"]]
+    if broken:
+        print(f"  不可用 {len(broken)} 个：")
+        grouped: Dict[Tuple[str, bool], List[str]] = {}
+        for row in broken:
+            key = (str(row.get("reason") or "unknown"), _is_anonymous_port(row))
+            grouped.setdefault(key, []).append(str(row["device"]))
+        for (reason, anonymous), devices in grouped.items():
+            sample = "、".join(devices[:2]) + ("…" if len(devices) > 2 else "")
+            if anonymous:
+                # 没有接硬件的口（Linux 上 ttyS0..31）：它打不开是"没有硬件"，给
+                # dialout / chmod 的建议只会把人带偏——真适配器在别处。
+                print(f"    · 没有接硬件的占位口（{len(devices)} 个，如 {sample}）— 可忽略")
+                continue
+            label = _PORT_REASON_LABEL.get(reason, "原因不明")
+            print(f"    · {label}（{len(devices)} 个，如 {sample}）")
+            for line in _port_advice(reason, posix):
+                print(f"        {line}")
+    if hidden and not getattr(args, "all_ports", False):
+        print(f"  已隐藏 {len(hidden)} 个没有接硬件的占位口"
+              f"（如 {hidden[0]['device']} 等）；加 --all 显示")
     if posix:
         print("  提示：POSIX 串口默认可被多个进程同时打开，「可用」不代表独占；"
               "本库以 exclusive 方式打开。")
@@ -887,6 +927,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_selftest, need_robot=False)
 
     p = sub.add_parser("ports", help="列出系统串口并检测是否被占用（离线）")
+    p.add_argument("--all", dest="all_ports", action="store_true",
+                   help="连没有接硬件的占位口（Linux 上 ttyS0..ttyS31）一起列出")
     p.set_defaults(func=cmd_ports, need_robot=False)
 
     p = sub.add_parser("export", help="把示教会话导出为 .rsc 工程文件（离线）")
@@ -1157,6 +1199,24 @@ def _ensure_utf8_stdio() -> None:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    """入口：顺手把「下游提前关掉管道」变成安静退出。
+
+    ``python -m romanbo ports | head -3`` 这类用法会让写入撞上 ``EPIPE``——不处理的话
+    用户会在**正常用法**下看到一整段 ``BrokenPipeError`` 栈回溯（实测 2026-09-27）。
+    """
+    try:
+        return _main(argv)
+    except BrokenPipeError:
+        # Python 退出时还会再 flush 一次 stdout，所以把 fd 指向 devnull，
+        # 否则解释器会在收尾时再抛一次。
+        try:
+            os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+        except OSError:                                  # pragma: no cover
+            pass
+        return 0
+
+
+def _main(argv: Optional[Sequence[str]] = None) -> int:
     _ensure_utf8_stdio()
     parser = build_parser()
     args = parser.parse_args(argv)
