@@ -539,5 +539,43 @@ class TestRequestBodyLimit(_ServerMixin, unittest.TestCase):
             conn.close()
 
 
+class TestConnectFailureHint(unittest.TestCase):
+    """串口打不开时，控制台要给出**可照做的处置**，而不是只丢一个 errno。
+
+    真实场景（2026-09-27）：适配器重枚举成 ``/dev/ttyUSB1`` 后用户不在 ``dialout``
+    组，页面上只显示 ``SerialException: [Errno 13] Permission denied``——看不出该去
+    加组还是该去关占用程序。启动时的自动连接与页面的「连接」都只打印 ``str(exc)``，
+    所以处置必须拼进**消息本身**。
+    """
+
+    def _message(self, exc: OSError, port: str = "/dev/ttyUSB1") -> str:
+        from unittest import mock as _mock
+
+        from romanbo import webui
+
+        console = WebConsole(port=port)
+        with _mock.patch.object(webui, "SerialTransport", side_effect=exc):
+            with self.assertRaises(RuntimeError) as ctx:
+                console.connect()
+        return str(ctx.exception)
+
+    def test_permission_denied_says_how_to_fix(self) -> None:
+        text = self._message(OSError(13, "Permission denied: '/dev/ttyUSB1'"))
+        self.assertIn("Permission denied", text, "原始信息不能丢")
+        self.assertIn("权限", text)
+        if not sys.platform.startswith("win"):
+            self.assertIn("dialout", text, "POSIX 下要指出是组权限问题")
+
+    def test_busy_says_where_to_look(self) -> None:
+        text = self._message(OSError(16, "Device or resource busy"))
+        self.assertIn("占用", text)
+
+    def test_wrong_port_name_points_at_ports(self) -> None:
+        """Windows 式的 ``COM3`` 写在 Linux 上 → ``ENOENT``：要指向能查设备名的命令。"""
+        text = self._message(OSError(2, "No such file or directory: 'COM3'"), port="COM3")
+        self.assertIn("COM3", text)
+        self.assertIn("ports", text)
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import errno
+import sys
 import time
 from abc import ABC, abstractmethod
 from typing import Dict, Iterable, List, Optional, Sequence
@@ -383,6 +384,29 @@ def _open_failure_reason(exc: BaseException) -> str:
     return "unknown"
 
 
+def port_error_hint(port: str, exc: BaseException) -> str:
+    """串口打不开时的**一句话**处置建议（分类依据同 `_open_failure_reason`）。
+
+    CLI 与可视化控制台都把它拼进错误消息：用户该看到的是"怎么办"，而不是只有一个
+    ``errno``。下面两句对应 2026-09-27 实测过的两个真实场景——适配器重枚举后新节点
+    没放权（``/dev/ttyUSB1`` + ``[Errno 13]``）、以及 Windows 的端口名写在 Linux 上
+    （``COM3`` + ``[Errno 2]``）。
+    """
+    reason = _open_failure_reason(exc)
+    posix = not sys.platform.startswith("win")
+    if reason == "permission":
+        if posix:
+            return (f"权限不足（不是被占用）：把用户加入 dialout 组后重新登录"
+                    f"（sudo usermod -aG dialout $USER），或临时 sudo chmod 666 {port}")
+        return "权限/访问被拒：关闭占用它的程序，或换一个端口试试"
+    if reason == "busy":
+        if posix:
+            return (f"已被占用：有进程正以排他方式持有它，用 sudo lsof {port} 或 "
+                    f"sudo fuser -v {port} 查持有者")
+        return "已被占用：关闭占用程序/串口助手，或拔插 USB 适配器释放"
+    return "端口名可能不对，或适配器刚被拔插；用 python -m romanbo ports 查看当前设备名"
+
+
 def list_serial_ports(*, probe: bool = True,
                       baudrate: int = P.BAUDRATE_DEFAULT) -> List[Dict[str, object]]:
     """枚举系统串口，并（默认）实测能否打开。
@@ -420,4 +444,5 @@ def list_serial_ports(*, probe: bool = True,
     return rows
 
 
-__all__ = ["Transport", "SerialTransport", "MockTransport", "list_serial_ports"]
+__all__ = ["Transport", "SerialTransport", "MockTransport", "list_serial_ports",
+           "port_error_hint"]

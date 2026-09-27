@@ -29,7 +29,8 @@ from . import joints as J
 from . import protocol as P
 from .robot import RomanboRobot
 from .servo import LoadLimitExceeded, Servo
-from .transport import MockTransport, SerialTransport, Transport, list_serial_ports
+from .transport import (MockTransport, SerialTransport, Transport,
+                        list_serial_ports, port_error_hint)
 from .webui_page import PAGE
 
 __all__ = ["FrameLog", "WebConsole", "make_server", "serve"]
@@ -131,7 +132,17 @@ class WebConsole:
                                 else SerialTransport(use_port, baudrate=use_baud))
             robot = RomanboRobot(transport=_LoggingTransport(inner, self.frames),
                                  ack_timeout=self._ack_timeout)
-            robot.open()
+            try:
+                robot.open()
+            except OSError as exc:
+                # 打不开串口是控制台最常见的失败，而两个入口都只打印 ``str(exc)``：
+                # 启动时的自动连接，以及页面上点「连接」（前端拼 "连接失败：" + 消息）。
+                # 所以把**可照做的处置**拼进消息本身——否则用户只看得到 errno
+                # （实测 2026-09-27：页面上只有 "SerialException: [Errno 13] Permission
+                # denied"，看不出该去加 dialout 组）。分类依据是 errno，不是异常类型：
+                # pyserial 把权限不足也包成 SerialException。
+                raise RuntimeError(f"{type(exc).__name__}: {exc}"
+                                   f"；{port_error_hint(use_port or '', exc)}") from exc
             self._robot = robot
             self._mock, self._port, self._baudrate = use_mock, use_port, use_baud
             self._online = []

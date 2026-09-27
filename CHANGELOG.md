@@ -7,6 +7,11 @@
 ## [Unreleased]
 
 ### 修复
+- **控制台连不上串口时给出可照做的处置**（`webui.WebConsole.connect`，新增
+  `transport.port_error_hint`）：原先页面上只有 `SerialException: [Errno 13] Permission
+  denied`，看不出是"该去加 `dialout` 组"还是"该去关占用程序"。现在按 `errno` 分类后把处置
+  拼进**消息本身**（启动时的自动连接与页面上的「连接」都只打印 `str(exc)`），并且这类失败
+  由 500 改判为 **409**——它是用户可修的问题，不是服务端故障
 - **`ports` 不再把「权限不足」误报成「已被占用」**（`cli.cmd_ports` +
   `transport.list_serial_ports` 新增 `reason` 字段）：原先两者共用一句提示（"多为权限
   问题（dialout 组）或已被占用"），遇到**适配器重枚举后新节点没放权**的情况
