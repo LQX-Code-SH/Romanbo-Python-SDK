@@ -79,6 +79,10 @@ python -m mkdocs build --strict   # CI 用；任何告警都会导致失败
    - Workflow name：`release.yml`，Environment name：`pypi`
 2. 在 GitHub 仓库侧建同名 environment：Settings → Environments → `pypi`
    （建议加 Required reviewers，避免误发）
+3. 建**仓库变量** `PUBLISH_PYPI = true`：Settings → Secrets and variables → Actions
+   → Variables。**不设这个变量时 `release.yml` 的 PyPI 作业会被跳过**（因为未配置
+   Trusted Publishing 时它必然认证失败，会把整个工作流染红，而 GitHub Release
+   其实已经成功）
 
 ### 发版步骤
 

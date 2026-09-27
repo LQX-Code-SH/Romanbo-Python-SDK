@@ -59,7 +59,12 @@ jobs:
     name: 发布到 PyPI
     needs: build
     runs-on: ubuntu-latest
-    # 需在 PyPI 侧配置 Trusted Publishing（见 CONTRIBUTING.md「发布」一节）
+    # 默认**跳过**：PyPI 侧需先配置 Trusted Publishing（见 CONTRIBUTING.md「发布」）。
+    # 未配置时这一步会以认证失败变红、把整个 Release 工作流染红，而 GitHub Release
+    # 其实已经成功——2026-09-27 首次发版就是这么红的。配好后把**仓库变量**
+    # PUBLISH_PYPI 设为 true（Settings → Secrets and variables → Actions → Variables）
+    # 即启用。
+    if: vars.PUBLISH_PYPI == 'true'
     environment:
       name: pypi
       url: https://pypi.org/p/romanbo
