@@ -7,6 +7,15 @@
 ## [Unreleased]
 
 ### 修复
+- **`deploy/99-usb-serial.rules` 加 `TAG+="uaccess"`**：原规则只给 `0660 + dialout`，而
+  `dialout` 组要**注销重新登录**才进会话——"装了规则却还是 Permission denied"多半是这个
+  （2026-09-27 就卡在这）。`uaccess` 由 systemd-logind 给当前登录的桌面用户补一条 ACL，
+  reload/trigger 后**立刻生效**。`docs/INSTALL.md` 同时写明两个顺序坑：`chmod` 之后再跑
+  `udevadm trigger` 会被按规则覆盖回 `0660`；只 `usermod -aG dialout` 而没重新登录同样
+  不生效（`id -nG | grep dialout` 一眼可查）
+- **控制台端口下拉改为过滤占位口**（前端）：`/api/ports` 仍返回全部（数据不丢），但下拉框
+  只列已识别的设备，状态行报「已隐藏 N 个没有接硬件的占位口」——原先 33 项里得在 32 个
+  `ttyS*` 中找 FT230X
 - **控制台的端口下拉沿用同一口径**（`/api/ports` 已识别设备排前；页面不再一律写"被占用"）：
   原先 32 个占位口会把 FT230X 挤到列表最后，且**权限不足被写成"被占用"**（与 `ports` 当初
   那个误导同源）。现在按 `reason` 显示"权限不足 / 已被占用 / 打不开"，没有 `description`

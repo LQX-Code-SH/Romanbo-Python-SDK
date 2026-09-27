@@ -406,6 +406,21 @@ class TestCliWiring(unittest.TestCase):
         self.assertTrue(args.open_browser)
 
 
+class TestPortSelectorFiltering(unittest.TestCase):
+    """页面下拉框要**过滤**没接硬件的占位口，并如实报告隐藏了几个。
+
+    真机实测（2026-09-27）：不筛的话下拉框 33 项，得在 32 个 ``ttyS*`` 里找 FT230X。
+    过滤放在前端做（``/api/ports`` 仍返回全部，数据不丢）。
+    """
+
+    def test_dropdown_filters_hardwareless_ports(self) -> None:
+        from romanbo.webui_page import PAGE
+
+        self.assertIn('r.description !== "n/a"', PAGE, "缺了过滤条件")
+        self.assertIn("已隐藏", PAGE, "隐藏了几个要如实说")
+        self.assertIn("没有接硬件的占位口", PAGE)
+
+
 class TestPageIntegrity(unittest.TestCase):
     """页面自身的静态一致性——**不需要浏览器**。
 

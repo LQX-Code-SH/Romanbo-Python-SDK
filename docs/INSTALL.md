@@ -63,17 +63,27 @@ python3 -m romanbo --port /dev/ttyUSB0 play my.rsc --ids 8,10 --speed 15
 sudo chmod 666 /dev/ttyUSB1
 ```
 
-**永久解决**（重插 / 换 USB 口 / 重新枚举都有效）——加入 `dialout` 组，并装上随仓库提供的
-udev 规则：
+**永久解决**（重插 / 换 USB 口 / 重新枚举都有效）——装上随仓库提供的 udev 规则：
 
 ```bash
-sudo usermod -aG dialout $USER                                  # 之后需注销重新登录
 sudo cp deploy/99-usb-serial.rules /etc/udev/rules.d/
 sudo udevadm control --reload && sudo udevadm trigger
 ```
 
+规则里带 `TAG+="uaccess"`，systemd-logind 会给当前登录的桌面用户补一条 ACL，所以**装完
+立刻生效、不必重新登录**。（不想依赖 `uaccess` 的话，把规则里的 `MODE`/`GROUP` 配上
+`sudo usermod -aG dialout $USER` 也行——但那需要**注销重新登录**才生效。）
+
+两个操作顺序上的坑：
+
+- **`chmod` 之后别跑 `udevadm trigger`**：trigger 会按规则重新套用权限，把 `chmod 666`
+  覆盖回 `0660`（表现为"刚 chmod 过，还是 Permission denied"）。要手动放权就放在 trigger
+  **之后**。
+- 反过来，如果只做了 `usermod -aG dialout` 而没重新登录，当前会话仍然打不开——这类"装了
+  但没生效"多半就是组未生效，用 `id -nG | grep dialout` 一眼能看出来。
+
 规则文件里的两个 16 进制 ID 是 FTDI FT230X（`0403:6015`）的；换别的适配器时先用 `lsusb`
-查它的 ID 再改，否则规则不会匹配（症状是"装了但没生效"）。
+查它的 ID 再改，否则规则不会匹配（同样是"装了没生效"）。
 
 > 脚本里建议用 `/dev/serial/by-id/` 下的**稳定路径**（按适配器序列号命名），避免重插后
 > `ttyUSB0` / `ttyUSB1` 变来变去：

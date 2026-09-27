@@ -301,19 +301,22 @@ const bad = m => ev('<span class="note">' + m + '</span>');
 async function loadPorts(){
   try{
     const rows = await api("/api/ports");
+    // 只列**已识别**的设备：Linux 上 pyserial 会列出 ttyS0..31 这类没接硬件的占位口
+    // （这台机器 32 个），放进下拉框纯属噪音。隐藏了几个仍然如实报出来。
+    const shown = rows.filter(r => r.description && r.description !== "n/a");
+    const hidden = rows.length - shown.length;
     const selEl = $("#portSel");
-    selEl.innerHTML = '<option value="">（选择串口）</option>' + rows.map(r => {
-      // 打不开的原因要看后端给的 reason（由 errno 分类）：一律写"被占用"会把权限不足
-      // 说成占用，把人引向"找占用进程"；没有 description 的是没接硬件的占位口。
+    selEl.innerHTML = '<option value="">（选择串口）</option>' + shown.map(r => {
+      // 打不开的原因看后端给的 reason（errno 分类）：一律写"被占用"会把权限不足
+      // 说成占用，把人引向"找占用进程"。
       const st = r.busy ? (r.reason === "permission" ? "权限不足"
                          : r.reason === "busy" ? "已被占用" : "打不开") : "可用";
-      const desc = (r.description && r.description !== "n/a")
-                 ? r.description : "没有接硬件的占位口";
       return '<option value="' + r.device + '">' + r.device + " · " + st +
-             " · " + desc + '</option>';
+             " · " + r.description + '</option>';
     }).join("");
-    if (state.port && rows.some(r => r.device === state.port)) selEl.value = state.port;
-    ok("串口枚举：" + rows.length + " 个设备");
+    if (state.port && shown.some(r => r.device === state.port)) selEl.value = state.port;
+    ok("串口枚举：" + shown.length + " 个设备" +
+       (hidden ? "（已隐藏 " + hidden + " 个没有接硬件的占位口）" : ""));
   }catch(e){ bad("枚举串口失败：" + e.message); }
 }
 
