@@ -554,7 +554,10 @@ class TestConnectFailureHint(unittest.TestCase):
         from romanbo import webui
 
         console = WebConsole(port=port)
-        with _mock.patch.object(webui, "SerialTransport", side_effect=exc):
+        # 真实的失败点在 ``robot.open()``：``SerialTransport.__init__`` 是惰性的、不碰
+        # 端口，所以**不能**把桩打在构造函数上——那会绕过 connect 里的包装（第一次
+        # 就是这么写错的：测试红、复现脚本也显示不出处置）。
+        with _mock.patch.object(webui.RomanboRobot, "open", side_effect=exc):
             with self.assertRaises(RuntimeError) as ctx:
                 console.connect()
         return str(ctx.exception)
