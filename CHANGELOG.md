@@ -56,6 +56,14 @@
   并注明前置条件——仓库需先启用 Pages，且 `enablement` 不接受 `GITHUB_TOKEN`
 
 ### 修复
+- **`--json` 的 stdout 现在只有结果**：进度/日志行（「读取起始位置…」、`sweep` 的每步
+  报告、`play` 的逐帧行、`--frames` 的原始帧）一律改走 **stderr**，
+  `python -m romanbo --json … | jq` 可以直接用；顺带给 `play --json` 补上结果
+  （原先只打印进度行，`--json` 下 stdout 是空的）
+- **节拍与超时改用 `time.perf_counter()`**：`Servo.move_at_speed` 的节拍预算、
+  `sweep` 的 `elapsed_s`、`Robot._wait_for` 与两个 `read_available` 的超时原先都用
+  `time.monotonic()`，而 Windows + CPython <= 3.12 下它粒度约 15.6 ms——100 ms 的节拍
+  会有 ±15% 误差，直接吃掉文档承诺的 ±4% 角速度（与 `SerialTransport.write` 同一类问题）
 - **紧急停止不再排队等设备锁**（`webui.WebConsole.stop_all`）：它原先与 `goto` /
   `multi_move` 共用一把设备锁，而运动会把锁持有整个动作过程（慢速长距离可达数十秒），
   于是"紧急停止"要等运动自己走完才生效——安全按钮失效。现在直接下发 `SET_TORQUE`，

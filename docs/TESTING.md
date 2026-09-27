@@ -3,7 +3,7 @@
 ## 日常自检
 
 ```bash
-python -m unittest discover -s tests -t .      # 193 项单元测试（全部通过，无跳过）
+python -m unittest discover -s tests -t .      # 197 项单元测试（全部通过，无跳过）
 python -m romanbo selftest                     # 60 条基准报文（逐字节比对）
 python -m romanbo --mock scan                  # 离线模拟器冒烟
 python examples/04_offline_frames.py           # 打印每条指令的真实报文

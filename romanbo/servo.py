@@ -203,7 +203,7 @@ class Servo:
         sent: List[int] = []
         self.last_peak_load = None
         for index, (dt, adc) in enumerate(steps, start=1):
-            started = time.monotonic()
+            started = time.perf_counter()           # 计时一律用高精度时钟，见下
             self.set_position(adc, level=level)
             sent.append(adc)
             if on_step is not None:
@@ -218,7 +218,10 @@ class Servo:
                 if max_load is None:
                     sleep(dt)                       # 常规路径：严格按节拍
                 else:
-                    budget = dt - (time.monotonic() - started)
+                    # 限力路径要扣掉回读负荷的往返耗时，因此必须用高精度时钟：
+                    # Windows 上 ``monotonic()`` 在 CPython <= 3.12 只有约 15.6 ms 粒度，
+                    # 而一拍才 100 ms —— 预算会偏 ±15%，直接吃掉文档承诺的 ±4% 角速度
+                    budget = dt - (time.perf_counter() - started)
                     sleep(budget if budget > 0 else 0.0)
         return sent
 
@@ -349,7 +352,7 @@ class Servo:
         records: List[Dict[str, object]] = []
         current = home if home is not None else self.get_position()
         for index, target in enumerate(sequence, start=1):
-            started = time.monotonic()
+            started = time.perf_counter()
             if stepwise:
                 self.move_at_speed(target, float(speed_dps), current=current,
                                    interval_ms=interval_ms, torque=None,
@@ -366,7 +369,7 @@ class Servo:
                 "target": target,
                 "readback": actual,
                 "error": None if actual is None else int(actual) - target,
-                "elapsed_s": round(time.monotonic() - started, 3),
+                "elapsed_s": round(time.perf_counter() - started, 3),
             }
             records.append(record)
             if on_step is not None:

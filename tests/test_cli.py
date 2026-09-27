@@ -96,7 +96,9 @@ class TestLoadEveryFlag(unittest.TestCase):
         try:
             args = cli.build_parser().parse_args(["--json"] + argv)
             buffer = io.StringIO()
-            with contextlib.redirect_stdout(buffer):
+            # stderr 也要收走：--json 时进度行改走 stderr，否则会漏进测试输出
+            with contextlib.redirect_stdout(buffer), \
+                 contextlib.redirect_stderr(io.StringIO()):
                 rc = getattr(cli, func)(robot, args)
             self.assertEqual(rc, 4, "阈值 50 < 负荷 100，应触发限力中止")
             text = buffer.getvalue()
@@ -140,6 +142,59 @@ class TestLoadEveryFlag(unittest.TestCase):
             with self.subTest(cmd=argv[0]):
                 args = cli.build_parser().parse_args(argv + ["--load-every", "2"])
                 self.assertEqual(args.load_every, 2)
+
+
+class TestJsonOutputIsClean(unittest.TestCase):
+    """``--json`` 时 stdout 必须**只有**一份可解析的 JSON。
+
+    原先进度行（「读取起始位置…」、`sweep` 的每步报告、`play` 的逐帧行）也打在
+    stdout 上，`python -m romanbo --json … | jq` 这类消费方式直接失败。现在它们走
+    stderr，stdout 只留结果。
+    """
+
+    def _run_json(self, argv: list[str], func: str):
+        import contextlib
+        import io
+        import json
+
+        from romanbo.robot import RomanboRobot
+        from romanbo.transport import MockTransport
+
+        mock = MockTransport(servo_ids=[1])
+        mock.positions[1] = 512
+        robot = RomanboRobot(transport=mock, ack_timeout=0.1).open()
+        try:
+            args = cli.build_parser().parse_args(["--json"] + argv)
+            out, err = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                rc = getattr(cli, func)(robot, args)
+            self.assertEqual(rc, 0, err.getvalue()[-300:])
+            return json.loads(out.getvalue()), err.getvalue()
+        finally:
+            robot.close()
+
+    def test_move_progress_goes_to_stderr(self) -> None:
+        payload, err = self._run_json(
+            ["move", "--targets", "1:600", "--speed", "60"], "cmd_move")
+        self.assertEqual(payload["targets"], {"1": 600})
+        self.assertIn("读取起始位置", err)
+
+    def test_sweep_stdout_holds_only_the_summary(self) -> None:
+        payload, err = self._run_json(
+            ["sweep", "--id", "1", "--low", "500", "--high", "520", "--cycles", "1",
+             "--speed", "60"], "cmd_sweep")
+        self.assertEqual(payload["range"], [500, 520])
+        self.assertIn("步 ", err)                    # 每步报告进了 stderr
+
+    def test_play_emits_a_result(self) -> None:
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        demo = os.path.join(root, "examples", "data", "demo.rsc")
+        # 大角速度 → 每帧一步，测试很快；这里验证结果与输出分流
+        payload, err = self._run_json(
+            ["play", demo, "--ids", "1", "--speed", "600"], "cmd_play")
+        self.assertGreaterEqual(payload["frames"], 1)
+        self.assertEqual(payload["ids"], [1])
+        self.assertIn("播放 ", err)
 
 
 class TestTargetsValidation(unittest.TestCase):

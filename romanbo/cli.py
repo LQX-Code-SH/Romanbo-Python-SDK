@@ -111,6 +111,16 @@ def _load_every(args: argparse.Namespace, default: int = 1) -> int:
     return max(1, int(value)) if value is not None else default
 
 
+def _progress(args: argparse.Namespace, text: str = "") -> None:
+    """进度/日志行（**不是**结果）。
+
+    ``--json`` 时写到 **stderr**：否则 stdout 里会混进「读取起始位置…」、每步报告
+    这类非 JSON 行，`python -m romanbo --json … | jq` 之类直接用不了。
+    """
+    print(text, file=sys.stderr if getattr(args, "json", False) else sys.stdout,
+          flush=True)
+
+
 def _emit(payload: object, args: argparse.Namespace) -> None:
     if args.json:
         print(json.dumps(payload, ensure_ascii=False, indent=2, default=str))
@@ -190,13 +200,15 @@ def cmd_ports(robot, args) -> int:
 
 
 def _show_io(robot: RomanboRobot, sent_before: int, args: argparse.Namespace) -> None:
-    """``--frames`` 时打印本次交互的原始帧。"""
+    """``--frames`` 时打印本次交互的原始帧（``--json`` 时走 stderr，避免污染结果）。"""
     if not args.frames:
         return
+    stream = sys.stderr if args.json else sys.stdout
     for frame in robot.sent_frames[sent_before:]:
-        print(f"  TX  {frame.hex(' ').upper()}")
+        print(f"  TX  {frame.hex(' ').upper()}", file=stream)
     for resp in robot.drain(0.05):
-        print(f"  RX  {resp.raw.hex(' ').upper()}    (id={resp.id} cmd=0x{resp.cmd:02X})")
+        print(f"  RX  {resp.raw.hex(' ').upper()}    (id={resp.id} cmd=0x{resp.cmd:02X})",
+              file=stream)
 
 
 # --------------------------------------------------------------------------- #
@@ -321,7 +333,7 @@ def cmd_move(robot, args) -> int:
         time.sleep(0.1)
     start = None
     if args.speed is not None and not args.no_capture:
-        print(f"读取起始位置（{len(targets)} 个关节）…", flush=True)
+        _progress(args, f"读取起始位置（{len(targets)} 个关节）…")
         start = robot.capture(list(targets), timeout=args.timeout)
     try:
         robot.move(targets, period_ms=args.period, mode=args.mode,
@@ -444,10 +456,11 @@ def cmd_sweep(robot, args) -> int:
         center = servo.get_position(timeout=args.timeout)
         delta = int(round(args.degrees / J.RATIO_MAIN))
         low, high = center - delta, center + delta
-        print(f"以当前位置 {center} 为中心往复 ±{args.degrees:g}° "
-              f"→ ADC {low}..{high}")
+        _progress(args, f"以当前位置 {center} 为中心往复 ±{args.degrees:g}° "
+                        f"→ ADC {low}..{high}")
     else:
-        print(f"往复区间 ADC {low}..{high}（摆幅 {(high - low) / 2 * J.RATIO_MAIN:.1f}°）")
+        _progress(args, f"往复区间 ADC {low}..{high}"
+                        f"（摆幅 {(high - low) / 2 * J.RATIO_MAIN:.1f}°）")
 
     if args.speed is not None:
         leg_seconds = abs(high - low) * J.RATIO_MAIN / args.speed
@@ -456,17 +469,15 @@ def cmd_sweep(robot, args) -> int:
     else:
         leg_seconds = (args.period if args.period is not None else 800) / 1000.0
         speed_text = f"单程周期 {leg_seconds * 1000:.0f} ms"
-    print(f"来回 {args.cycles} 次，{speed_text}"
-          f"{'，循环直到 Ctrl+C' if args.loop else ''}\n")
+    _progress(args, f"来回 {args.cycles} 次，{speed_text}"
+                    f"{'，循环直到 Ctrl+C' if args.loop else ''}\n")
 
     all_records: List[Dict[str, object]] = []
 
     def _report(record: Dict[str, object]) -> None:
-        if args.json:
-            return
-        print(f"  步 {record['step']:>2}: 目标 {record['target']:>4}  "
-              f"回读 {record['readback']}  误差 {record['error']}  "
-              f"({record['elapsed_s']}s)", flush=True)
+        _progress(args, f"  步 {record['step']:>2}: 目标 {record['target']:>4}  "
+                        f"回读 {record['readback']}  误差 {record['error']}  "
+                        f"({record['elapsed_s']}s)")
 
     try:
         while True:
@@ -480,14 +491,14 @@ def cmd_sweep(robot, args) -> int:
             if not args.loop:
                 break
     except KeyboardInterrupt:
-        print("\n已手动停止（舵机保持在当前位置）")
+        _progress(args, "\n已手动停止（舵机保持在当前位置）")
     except LoadLimitExceeded as exc:
         return _abort_on_load(exc, args)
 
     if not args.no_return:
         time.sleep(0.2)
         final = servo.get_position(timeout=args.timeout)
-        print(f"已回到起始位置附近: ADC {final}")
+        _progress(args, f"已回到起始位置附近: ADC {final}")
 
     errors = [abs(int(r["error"])) for r in all_records if r["error"] is not None]
     started = sum(float(r["elapsed_s"]) for r in all_records)
@@ -505,8 +516,9 @@ def cmd_sweep(robot, args) -> int:
     if args.json:
         _emit(summary, args)
     else:
-        print(f"\n合计 {summary['steps']} 步，最大误差 {summary['max_error']}，"
-              f"平均误差 {summary['avg_error']}，耗时 {summary['total_seconds']} s")
+        _progress(args, f"\n合计 {summary['steps']} 步，最大误差 "
+                        f"{summary['max_error']}，平均误差 {summary['avg_error']}，"
+                        f"耗时 {summary['total_seconds']} s")
     return 0
 
 
@@ -652,12 +664,11 @@ def cmd_load(robot, args) -> int:
                 **{str(i): read_one(i) for i in ids},
             }
             samples.append(row)
-            if not args.json:
-                print("  ".join(f"id{k}={v}" for k, v in row.items()), flush=True)
+            _progress(args, "  ".join(f"id{k}={v}" for k, v in row.items()))
             if index + 1 < count:
                 time.sleep(args.interval)
     except KeyboardInterrupt:
-        print("\n已停止采样")
+        _progress(args, "\n已停止采样")
 
     if count > 1:
         _emit({"samples": samples}, args)
@@ -675,35 +686,37 @@ def cmd_play(robot, args) -> int:
     wanted = _parse_ids(args.ids) or sorted(
         {i for frame in frames for i in frame.targets(id_offset=robot.id_offset)})
     if args.speed is not None:
-        print(f"播放 {project.project_name}: {len(frames)} 帧，"
-              f"角速度 {args.speed:g} °/s（每段按角速度步进逼近，文件 Period 被忽略）")
+        _progress(args, f"播放 {project.project_name}: {len(frames)} 帧，"
+                        f"角速度 {args.speed:g} °/s"
+                        f"（每段按角速度步进逼近，文件 Period 被忽略）")
     else:
-        print(f"播放 {project.project_name}: {len(frames)} 帧，"
-              f"按文件 Period（周期倍率 {args.speed_scale:g}）")
+        _progress(args, f"播放 {project.project_name}: {len(frames)} 帧，"
+                        f"按文件 Period（周期倍率 {args.speed_scale:g}）")
     if len(wanted) < frames[0].motor_count:
-        print(f"只驱动 {len(wanted)} 个在线关节: {wanted}"
-              f"（文件是 {frames[0].motor_count} 通道整机动作；"
-              f"向不存在的 ID 发帧会触发 0.4 s 总线静默期）")
+        _progress(args, f"只驱动 {len(wanted)} 个在线关节: {wanted}"
+                        f"（文件是 {frames[0].motor_count} 通道整机动作；"
+                        f"向不存在的 ID 发帧会触发 0.4 s 总线静默期）")
     if args.torque is not None:
         robot.torque_all(args.torque == "on", wanted)
 
     start_positions = None
     if args.speed is not None and not args.no_capture:
         joint_ids = sorted(wanted)
-        print(f"读取起始位置（{len(joint_ids)} 个关节，用于第一帧的角位移）…",
-              flush=True)
+        _progress(args, f"读取起始位置（{len(joint_ids)} 个关节，"
+                        f"用于第一帧的角位移）…")
         start_positions = robot.capture(joint_ids, timeout=args.timeout)
         if start_positions:
-            print("  起始位置 "
-                  + ", ".join(f"{k}={v}" for k, v in sorted(start_positions.items())))
+            _progress(args, "  起始位置 "
+                            + ", ".join(f"{k}={v}"
+                                        for k, v in sorted(start_positions.items())))
         else:
             print("  起始位置读取失败，首帧将退回文件 Period", file=sys.stderr)
     stop_event = threading.Event()
 
     def _on_frame(frame):
         if args.frames:
-            print(f"  frame scene={frame.scene_index} idx={frame.motion_index} "
-                  f"period={frame.period_ms}ms")
+            _progress(args, f"  frame scene={frame.scene_index} idx={frame.motion_index} "
+                            f"period={frame.period_ms}ms")
 
     try:
         played = robot.play(frames, loop=args.loop, speed_dps=args.speed,
@@ -716,11 +729,15 @@ def cmd_play(robot, args) -> int:
                             on_frame=_on_frame, stop_event=stop_event)
     except KeyboardInterrupt:
         stop_event.set()
-        print("\n已中断")
+        _progress(args, "\n已中断")
         return 130
     except LoadLimitExceeded as exc:
         return _abort_on_load(exc, args)
-    print(f"完成，共播放 {played} 帧")
+    if args.json:
+        _emit({"file": args.file, "frames": played, "ids": wanted,
+               "speed_dps": args.speed}, args)
+    else:
+        _progress(args, f"完成，共播放 {played} 帧")
     return 0
 
 

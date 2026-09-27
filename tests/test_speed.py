@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import time
 import unittest
 
 from romanbo import joints as J
@@ -127,6 +128,43 @@ class TestServoStepwise(unittest.TestCase):
         self.assertEqual([r["target"] for r in records], [614, 512])
         self.assertEqual(_commands(self.robot, P.ServoCmd.SET_PERIOD), [])
         self.assertEqual(_positions_for(self.robot, 1)[-1], 512)
+
+    def test_step_budget_uses_the_high_resolution_clock(self) -> None:
+        """节拍预算必须用 ``perf_counter``，不能用 ``monotonic``。
+
+        Windows 上 ``monotonic()`` 在 CPython <= 3.12 走 ``GetTickCount64()``
+        （粒度约 15.6 ms），而一拍才 100 ms —— 预算会偏 ±15%，直接吃掉文档承诺的
+        ±4% 角速度。做法：把 ``monotonic`` 换成**每读一次就跨一个 tick** 的粗时钟，
+        把 ``perf_counter`` 换成基本不前进的受控时钟；若实现用的是粗时钟，
+        第一次预算就会变成 ``dt - 0.015625`` 而不是 ``dt``。
+        """
+        from unittest import mock
+
+        state = {"mono": 100.0, "perf": 1000.0, "sleeps": list[float]()}
+
+        def coarse_monotonic() -> float:
+            state["mono"] += 0.015625           # 每次读取前进一个 Windows tick
+            return state["mono"]
+
+        def controlled_perf_counter() -> float:
+            state["perf"] += 1e-9               # 几乎不动（真实耗时应为 ~0）
+            return state["perf"]
+
+        def sleep(seconds: float) -> None:
+            state["sleeps"].append(seconds)
+            state["perf"] += seconds
+
+        servo = self.robot.servo(1)
+        with mock.patch.multiple(time, monotonic=coarse_monotonic,
+                                 perf_counter=controlled_perf_counter):
+            # max_load 不为 None → 走「扣掉回读耗时」的预算路径
+            servo.move_at_speed(614, 60, current=512, interval_ms=100,
+                                max_load=255, load_check_every=3, sleep=sleep)
+
+        self.assertTrue(state["sleeps"], "没有走到预算路径")
+        for seconds in state["sleeps"]:
+            self.assertAlmostEqual(seconds, 0.1, places=6,
+                                   msg="预算被粗时钟污染（用了 monotonic？）")
 
     def test_sweep_period_path_uses_injected_sleep(self) -> None:
         """``period_ms`` 分支也必须走注入的 ``sleep``，否则测试会真的睡下去。

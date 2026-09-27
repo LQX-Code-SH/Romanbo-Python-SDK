@@ -46,6 +46,21 @@ python -m romanbo [全局选项] <命令> [命令选项]
 | `5` | 串口错误 |
 | `130` | 用户中断（Ctrl+C） |
 
+## `--json` 的输出契约
+
+**stdout 只有结果**：`--json` 时进度与日志行（`读取起始位置…`、`sweep` 的每步报告、
+`play` 的逐帧行、`--frames` 的原始帧）一律改走 **stderr**，因此可以直接消费：
+
+```bash
+python -m romanbo --port COM3 --json read --ids 8,10 | jq '.["8"].adc'
+python -m romanbo --port COM3 --json move --targets 8:600 --speed 30 --readback \
+    | jq .readback
+```
+
+> 结果 JSON 是**缩进美化**的多行文档。注意纯确认类命令（`torque` / `led` / `pid` /
+> `limit` / `param` / `wheel` / `sync` / `calib` / `set-id` / `reset`）目前不产出
+> JSON 结果，仍打印一行中文。
+
 ## 常用组合
 
 ```bash

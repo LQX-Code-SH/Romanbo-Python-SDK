@@ -174,9 +174,11 @@ class RomanboRobot:
         self.flush_input()
         self.send(frame)
 
-        deadline = time.monotonic() + timeout
+        # 超时也用高精度时钟：Windows 上 monotonic() 在 CPython <= 3.12 粒度约 15.6 ms，
+        # 对 0.1~0.5 s 的探测超时是 3%~15% 的误差（同 write() 帧间隔那个坑）
+        deadline = time.perf_counter() + timeout
         while True:
-            remaining = deadline - time.monotonic()
+            remaining = deadline - time.perf_counter()
             if remaining <= 0:
                 raise TimeoutError(
                     f"等待回包超时: id={target_id} cmd=0x{request.cmd:02X}")

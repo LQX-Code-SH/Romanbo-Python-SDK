@@ -138,12 +138,12 @@ class SerialTransport(Transport):
     def read_available(self, timeout: float) -> bytes:
         if not self.is_open:
             return b""
-        deadline = time.monotonic() + timeout
+        deadline = time.perf_counter() + timeout
         while True:
             waiting = self._ser.in_waiting
             if waiting:
                 return self._ser.read(waiting)
-            if time.monotonic() >= deadline:
+            if time.perf_counter() >= deadline:
                 return b""
             time.sleep(0.002)
 
@@ -223,8 +223,8 @@ class MockTransport(Transport):
             self._rx.extend(reply)
 
     def read_available(self, timeout: float) -> bytes:
-        deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
+        deadline = time.perf_counter() + timeout
+        while time.perf_counter() < deadline:
             if self._rx:
                 data = bytes(self._rx)
                 self._rx.clear()
