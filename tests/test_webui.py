@@ -581,6 +581,26 @@ class TestConnectFailureHint(unittest.TestCase):
         self.assertIn("ports", text)
 
 
+class TestConsolePortsOrder(unittest.TestCase):
+    """控制台的端口列表要把**已识别的设备排前面**（下拉框里同理）。
+
+    真机实测（2026-09-27）：这台机器枚举出 32 个 ``ttyS*`` 占位口，FT230X 排在第 35 位；
+    GUI 这边**不隐藏**（下拉框得能选到任何端口），但顺序要让真适配器在最前面。
+    """
+
+    def test_identified_devices_come_first(self) -> None:
+        from unittest import mock as _mock
+
+        rows = [{"device": f"/dev/ttyS{i}", "description": "n/a", "hwid": "", "busy": True}
+                for i in range(32)]
+        rows.append({"device": "/dev/ttyUSB0", "description": "FT230X Basic UART",
+                     "hwid": "", "busy": False})
+        with _mock.patch("romanbo.webui.list_serial_ports", return_value=rows):
+            ordered = WebConsole.ports()
+        self.assertEqual(ordered[0]["device"], "/dev/ttyUSB0")
+        self.assertEqual(len(ordered), 33, "GUI 只排序、不隐藏")
+
+
 class TestLostPortReporting(unittest.TestCase):
     """串口被拔掉 / 重新枚举后，控制台不能继续自报「已连接」。
 

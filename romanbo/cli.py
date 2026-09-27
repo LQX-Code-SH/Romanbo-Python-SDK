@@ -25,7 +25,7 @@ from . import golden, joints as J, protocol as P
 from .robot import RomanboRobot
 from .rsc import DEFAULT_ADC, RscProject, write_project
 from .servo import LoadLimitExceeded
-from .transport import MockTransport, list_serial_ports
+from .transport import MockTransport, is_anonymous_port, list_serial_ports
 
 #: 软件限力中止时的退出码
 EXIT_LOAD_LIMIT = 4
@@ -184,14 +184,6 @@ def _port_hint(port: str, exc: BaseException) -> str:
 _PORT_REASON_LABEL = {"permission": "权限不足（不是被占用）", "busy": "已被占用"}
 
 
-def _is_anonymous_port(row: Dict[str, object]) -> bool:
-    """没有身份的端口：Linux 上 ``ttyS0..ttyS31`` 这类主板遗留串口（``description`` 是 n/a）。
-
-    它们要排在已识别设备**之后**，免得真正的适配器被埋在一屏里。
-    """
-    return str(row.get("description") or "").strip() in ("", "n/a")
-
-
 def _port_advice(reason: str, posix: bool) -> List[str]:
     """某个原因对应的处置（多行；缩进由调用方加）。"""
     if reason == "permission":
@@ -218,12 +210,12 @@ def cmd_ports(robot, args) -> int:
 
     # 已识别的真实设备排前面：Linux 上 pyserial 还会列出 ttyS0..ttyS31 这类主板遗留串口，
     # 按名字排序会把真正的适配器压到第 35 位——用户要在一屏噪音里找自己的 FT230X。
-    ordered = sorted(rows, key=lambda r: (_is_anonymous_port(r), str(r["device"])))
+    ordered = sorted(rows, key=lambda r: (is_anonymous_port(r), str(r["device"])))
     # 没有接硬件的占位口**默认不列**（这台机器上有 32 个）；但**不静默丢弃**：
     # 末尾报一行「已隐藏 N 个」，`--all` 可看全——诊断命令不该替用户判断"你不需要它"。
-    hidden = [row for row in ordered if _is_anonymous_port(row)]
+    hidden = [row for row in ordered if is_anonymous_port(row)]
     shown = (ordered if getattr(args, "all_ports", False)
-             else [row for row in ordered if not _is_anonymous_port(row)])
+             else [row for row in ordered if not is_anonymous_port(row)])
 
     if args.json:
         _emit(shown, args)
@@ -248,7 +240,7 @@ def cmd_ports(robot, args) -> int:
         print(f"  不可用 {len(broken)} 个：")
         grouped: Dict[Tuple[str, bool], List[str]] = {}
         for row in broken:
-            key = (str(row.get("reason") or "unknown"), _is_anonymous_port(row))
+            key = (str(row.get("reason") or "unknown"), is_anonymous_port(row))
             grouped.setdefault(key, []).append(str(row["device"]))
         for (reason, anonymous), devices in grouped.items():
             sample = "、".join(devices[:2]) + ("…" if len(devices) > 2 else "")

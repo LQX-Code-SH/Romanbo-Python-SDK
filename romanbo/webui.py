@@ -30,7 +30,7 @@ from . import protocol as P
 from .robot import RomanboRobot
 from .servo import LoadLimitExceeded, Servo
 from .transport import (MockTransport, SerialTransport, Transport,
-                        list_serial_ports, port_error_hint)
+                        is_anonymous_port, list_serial_ports, port_error_hint)
 from .webui_page import PAGE
 
 __all__ = ["FrameLog", "WebConsole", "make_server", "serve"]
@@ -177,7 +177,14 @@ class WebConsole:
 
     @staticmethod
     def ports() -> List[Dict[str, Any]]:
-        return list_serial_ports()
+        """枚举串口：**已识别的设备排前面**。
+
+        页面用它填端口下拉；Linux 上 pyserial 还会列出 ``ttyS0..31`` 这类没有接硬件的
+        占位口（这台机器上 32 个），排在前面的话真适配器要滚半天才找得到。这里**不隐藏**
+        （下拉框里得能选到任何端口），只把有身份的排前面——`ports` 命令那边是直接隐藏。
+        """
+        rows = list_serial_ports()
+        return sorted(rows, key=lambda r: (is_anonymous_port(r), str(r["device"])))
 
     # -- 发现 -------------------------------------------------------------- #
 

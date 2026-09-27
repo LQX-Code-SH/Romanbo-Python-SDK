@@ -38,7 +38,7 @@ python -m romanbo [全局选项] <命令> [命令选项]
 | `set-id` / `reset` | 改 ID / 复位 |
 | `play` | `文件 [--scene N] [--ids 8,10] [--loop] [--speed 度每秒] [--speed-scale 周期倍率] [--no-capture] [--max-load] [--load-every N] [--torque on/off]`；`--ids` 只驱动在线关节（整机文件务必指定，否则向不存在的 ID 发帧会触发 0.4 s 总线静默期） |
 | `info` | 打印 `.rsc` 工程摘要（离线） |
-| `webui` | 启动**本地可视化控制台**（浏览器操作）：`--http-host`（默认 `127.0.0.1`）、`--http-port`（默认 `8765`）、`--open`（自动开浏览器）；配合全局 `-p/--port` 或 `--mock` 会自动连接。见[可视化控制台](WEBUI.md) |
+| `webui` | 启动**本地可视化控制台**（浏览器操作）：`--http-host`（默认 `127.0.0.1`）、`--http-port`（默认 `8765`）、`--open`（自动开浏览器）。全局 `-p/--port` 或 `--mock` **可选**：给了才在启动时自动连接，不给就在页面上选。见[可视化控制台](WEBUI.md) |
 
 ## 退出码
 

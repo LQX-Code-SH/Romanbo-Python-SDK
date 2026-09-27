@@ -6,10 +6,14 @@
 ## 快速开始
 
 ```bash
-python -m romanbo webui --mock                  # 模拟器：无需硬件（17 个虚拟舵机）
-python -m romanbo webui --port /dev/ttyUSB0     # 真机（Windows 用 --port COM3）
-python -m romanbo webui --port COM3 --open      # 启动后自动打开浏览器
+python -m romanbo webui                         # 只起控制台：串口在页面上选
+python -m romanbo webui --mock                  # 启动即连模拟器（17 个虚拟舵机）
+python -m romanbo webui --port /dev/ttyUSB0     # 启动即连真机（Windows 用 COM3）
+python -m romanbo webui --port COM3 --open      # 再加 --open，启动后自动开浏览器
 ```
+
+`--port` 与 `--mock` **都不是必填**——它们只决定「启动时是否顺手连上」。什么都不给也能起，
+之后在页面里选串口（或勾模拟模式）再点连接即可。
 
 终端会打印一条**带令牌的链接**：
 
@@ -25,8 +29,8 @@ ROMANBO 舵机控制台已启动，请用浏览器打开：
 | `--http-host` | 监听地址，默认 `127.0.0.1`（只监听本机回环） |
 | `--http-port` | 端口，默认 `8765`；`0` = 由系统分配 |
 | `--open` | 启动后自动打开浏览器 |
-| `-p/--port` | 串口（与其它子命令一致）；给了就**自动连接** |
-| `--mock` | 模拟模式，完全不碰硬件 |
+| `-p/--port` | 串口（与其它子命令一致）；给了就**启动时自动连接**——**不必填**，不给就在页面上选 |
+| `--mock` | 模拟模式，完全不碰硬件；同样**不必填**（页面里也能勾） |
 
 连不上时**不用猜**：打不开串口的消息里会直接附上处置——权限不足 → 加入 `dialout` 组；
 已被占用 → 用 `lsof` / `fuser` 查持有者；名字不对 → `python -m romanbo ports` 看当前设备名。

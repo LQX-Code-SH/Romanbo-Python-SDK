@@ -302,10 +302,16 @@ async function loadPorts(){
   try{
     const rows = await api("/api/ports");
     const selEl = $("#portSel");
-    selEl.innerHTML = '<option value="">（选择串口）</option>' + rows.map(r =>
-      '<option value="' + r.device + '">' + r.device +
-      (r.busy ? " · 被占用" : " · 可用") + (r.description ? " · " + r.description : "") +
-      '</option>').join("");
+    selEl.innerHTML = '<option value="">（选择串口）</option>' + rows.map(r => {
+      // 打不开的原因要看后端给的 reason（由 errno 分类）：一律写"被占用"会把权限不足
+      // 说成占用，把人引向"找占用进程"；没有 description 的是没接硬件的占位口。
+      const st = r.busy ? (r.reason === "permission" ? "权限不足"
+                         : r.reason === "busy" ? "已被占用" : "打不开") : "可用";
+      const desc = (r.description && r.description !== "n/a")
+                 ? r.description : "没有接硬件的占位口";
+      return '<option value="' + r.device + '">' + r.device + " · " + st +
+             " · " + desc + '</option>';
+    }).join("");
     if (state.port && rows.some(r => r.device === state.port)) selEl.value = state.port;
     ok("串口枚举：" + rows.length + " 个设备");
   }catch(e){ bad("枚举串口失败：" + e.message); }

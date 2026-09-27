@@ -425,6 +425,15 @@ def _open_failure_reason(exc: BaseException) -> str:
     return "unknown"
 
 
+def is_anonymous_port(row: Dict[str, object]) -> bool:
+    """这个端口**没有身份**：Linux 上 ``ttyS0..ttyS31`` 这类主板遗留串口（``description`` 是 n/a）。
+
+    ``ports`` 与控制台的端口下拉都用它把"没接硬件"的口排到后面（或隐藏）——真适配器被
+    30 多个占位口挤到末尾时最难找（2026-09-27 实测：FT230X 排在第 35 位）。
+    """
+    return str(row.get("description") or "").strip() in ("", "n/a")
+
+
 def port_error_hint(port: str, exc: BaseException) -> str:
     """串口打不开时的**一句话**处置建议（分类依据同 `_open_failure_reason`）。
 
@@ -486,4 +495,4 @@ def list_serial_ports(*, probe: bool = True,
 
 
 __all__ = ["Transport", "SerialTransport", "MockTransport", "list_serial_ports",
-           "port_error_hint"]
+           "is_anonymous_port", "port_error_hint"]
