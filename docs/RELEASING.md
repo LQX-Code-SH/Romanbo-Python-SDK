@@ -3,8 +3,8 @@
 > **本文讲什么**：把新版本发到 PyPI 与 GitHub Release 的**逐步操作清单**——首次配置
 > （PyPI Trusted Publishing）、每次发版的固定流程、发布后验证、发错了怎么补救。
 >
-> **不讲什么**：代码贡献流程见 [`CONTRIBUTING.md`](../CONTRIBUTING.md)；测试怎么做见
-> [测试与自检](TESTING.md) 与[测试方案](SERVO_TEST_PLAN.md)。
+> **不讲什么**：代码贡献流程见仓库根目录的 `CONTRIBUTING.md`（不在文档站内）；测试怎么做
+> 见[测试与自检](TESTING.md) 与[测试方案](SERVO_TEST_PLAN.md)。
 
 ## 0. 全景
 
