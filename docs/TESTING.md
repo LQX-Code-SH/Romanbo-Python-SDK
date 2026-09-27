@@ -3,7 +3,7 @@
 ## 日常自检
 
 ```bash
-python -m unittest discover -s tests -t .      # 236 项单元测试（全部通过，无跳过）
+python -m unittest discover -s tests -t .      # 239 项单元测试（全部通过，无跳过）
 python -m romanbo selftest                     # 60 条基准报文（逐字节比对）
 python -m romanbo --mock scan                  # 离线模拟器冒烟
 python examples/04_offline_frames.py           # 打印每条指令的真实报文
@@ -27,6 +27,7 @@ python examples/04_offline_frames.py           # 打印每条指令的真实报�
 | `tests/test_standalone.py` | 脱离仓库可用性（子进程屏蔽 `serial`）、收发锁、帧间隔 |
 | `tests/test_servo.py` | 舵机层健壮性：畸形/截断回包不得**静默**变成错误数值 |
 | `tests/test_webui.py` | 控制台后端：访问控制（令牌 / Host）、前后端接口契约、页面静态一致性、**运动期间的并发响应**、请求体上限 |
+| `tests/test_doc_counts.py` | 文档里写的「当前状态」数字（用例总数）与代码一致；历史记录不受影响 |
 
 ## 文档站
 

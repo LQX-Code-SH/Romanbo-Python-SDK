@@ -14,17 +14,23 @@
 pip install pyserial
 ```
 
-## 三种用法
-
-均在仓库根目录执行：
+## 四种用法
 
 ```bash
-# A. 直接复制目录：把 romanbo/ 拷进你的项目即可（无需安装，可脱离本仓库驱动真机）
-# B. 本地可编辑安装（开发用）
+# A. 从 PyPI 安装（使用者推荐；控制台脚本 `romanbo` 随包提供）
+pip install romanbo
+#    国内镜像同步新版本有延迟，急着装可以指官方源：
+#    pip install --index-url https://pypi.org/simple romanbo
+
+# B. 直接复制目录：把 romanbo/ 拷进你的项目即可（无需安装，可脱离本仓库驱动真机）
+
+# C. 本地可编辑安装（开发用）
 pip install -e .                     # 需要开发工具时：pip install -e ".[dev]"
-# C. 构建 wheel（分发用；产物含控制台脚本 romanbo）
+
+# D. 构建 wheel（分发用；产物含控制台脚本 romanbo）
 python -m pip wheel . --no-deps -w dist
-#    产物：romanbo-1.1.0-py3-none-any.whl，内含 10 个模块 + py.typed + entry_points.txt
+#    产物：romanbo-<版本>-py3-none-any.whl（版本号取自 romanbo/__init__.py），
+#    内含 py.typed 与 entry_points.txt
 ```
 
 也可不安装，直接在仓库根目录以模块方式运行：

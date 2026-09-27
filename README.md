@@ -29,11 +29,12 @@
 - **离线可用**：`.rsc` 解析、报文编码、`--mock` 模拟器、60 条基准报文自检全部零依赖
 - **可视化控制台**：`python -m romanbo webui` 起一个只监听本机的 Web 界面——扫描、运动、
   读写参数，并把**原始收发报文**实时打在页面上（见[可视化控制台](docs/WEBUI.md)）
-- **工程化**：201 项单元测试（无需硬件）+ CI（Python 3.8~3.13）+ 类型标注（`py.typed`）
+- **工程化**：239 项单元测试（无需硬件）+ CI（Python 3.8~3.13）+ 类型标注（`py.typed`）
 
 ## 安装
 
 ```bash
+pip install romanbo                  # 从 PyPI 安装（国内镜像同步有延迟，可用 --index-url https://pypi.org/simple）
 pip install pyserial                 # 仅真实串口需要；离线功能零依赖
 pip install -e .                     # 或把 romanbo/ 目录直接拷进你的项目
 ```
@@ -152,7 +153,7 @@ with RomanboRobot("/dev/ttyUSB0") as robot:      # 或 connect("COM3", mock=True
 romanbo/            核心包（protocol / transport / servo / robot / rsc / joints / cli / golden）
 docs/               文档（协议规格、实测结论、API 参考、证据日志）
 examples/           示例脚本 + data/demo.rsc 样例工程
-tests/              201 项单元测试（不需要硬件）
+tests/              239 项单元测试（不需要硬件）
 tools/servo_probe.py  单舵机原始十六进制联调工具
 ```
 

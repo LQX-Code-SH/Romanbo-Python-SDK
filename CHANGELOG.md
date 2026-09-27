@@ -7,6 +7,11 @@
 ## [Unreleased]
 
 ### 修复
+- **文档里的用例总数不再靠记性**（`tests/test_doc_counts.py`）：一天之内这个数字在 README 与
+  `docs/TESTING.md` 里过期了三回（188 → 201 → 236 → 237），现在直接数出来对比——不一致就红，
+  而历史记录（`TEST_REPORTS.md` 等）写的是当时的数字，**不**参与同步
+- 文档补上"已发布到 PyPI"：`README.md` 的安装段与 `docs/INSTALL.md` 的"四种用法"加入
+  `pip install romanbo`（含国内镜像同步延迟的提示）
 - **`MANIFEST.in` 改用通配符 `deploy/*.rules`**：写死文件名时，规则从 `99-` 改名 `60-` 后
   sdist 会**静默漏掉** `deploy/`（1.1.1 的 sdist 就是这样——发布后在 PyPI 上核对才发现），
   并加了测试守住；`docs/RELEASING.md` 补上"发布后验证的两个坑"（国内镜像有同步延迟、
