@@ -19,10 +19,10 @@ python -m romanbo [全局选项] <命令> [命令选项]
 | `export` | `--file taught.json --out taught.rsc`：把示教会话导出为**可播放的 `.rsc` 工程文件**（离线） |
 | `config` | `--id/--ids`：位置、PID、限值、**load（实测负荷）**、acceleration、margin、温度、零点 |
 | `load` | `--id/--ids --watch N --interval 秒`：实测负荷采样 |
-| `jog` | `--id --degrees 度 \| --delta ADC`；速度用 `--speed 度/秒` 或 `--period ms`；可加 `--max-load`、`--level` |
+| `jog` | `--id --degrees 度 \| --delta ADC`；速度用 `--speed 度/秒` 或 `--period ms`；可加 `--max-load`、`--load-every N`、`--level` |
 | `angle` | `--id --degrees`（绝对角度，中点 512 = 0°），速度选项同上 |
-| `sweep` | `--id --degrees/--low/--high --cycles`；`--no-readback --no-return --loop` |
-| `move` | `--targets 8:600,10:480`；`--speed`（角速度）/`--period`；`--max-load`；`--no-capture`；`--settle 秒`（下发后等到位再返回，`--readback` 时默认 0.3）；`--readback`（回读实际位置与误差） |
+| `sweep` | `--id --degrees/--low/--high --cycles`；`--max-load`、`--load-every N`；`--no-readback --no-return --loop` |
+| `move` | `--targets 8:600,10:480`；`--speed`（角速度）/`--period`；`--max-load`、`--load-every N`；`--no-capture`；`--settle 秒`（下发后等到位再返回，`--readback` 时默认 0.3）；`--readback`（回读实际位置与误差） |
 | `torque` | `on\|off` `--ids`：力矩使能开关 |
 | `led` | `--id/--ids --value N` 或 `--color 1,0,1` |
 | `pid` | `--id --p --i --d [--nosave]`：写入后**回读确认**，失败退出码 1 |
@@ -32,7 +32,7 @@ python -m romanbo [全局选项] <命令> [命令选项]
 | `sync` | `--id`（默认 254 广播）发同步触发 |
 | `calib` | 把当前位置设为零点（`0x23`） |
 | `set-id` / `reset` | 改 ID / 复位 |
-| `play` | `文件 [--scene N] [--ids 8,10] [--loop] [--speed 度每秒] [--speed-scale 周期倍率] [--no-capture] [--max-load] [--torque on/off]`；`--ids` 只驱动在线关节（整机文件务必指定，否则向不存在的 ID 发帧会触发 0.4 s 总线静默期） |
+| `play` | `文件 [--scene N] [--ids 8,10] [--loop] [--speed 度每秒] [--speed-scale 周期倍率] [--no-capture] [--max-load] [--load-every N] [--torque on/off]`；`--ids` 只驱动在线关节（整机文件务必指定，否则向不存在的 ID 发帧会触发 0.4 s 总线静默期） |
 | `info` | 打印 `.rsc` 工程摘要（离线） |
 | `webui` | 启动**本地可视化控制台**（浏览器操作）：`--http-host`（默认 `127.0.0.1`）、`--http-port`（默认 `8765`）、`--open`（自动开浏览器）；配合全局 `-p/--port` 或 `--mock` 会自动连接。见[可视化控制台](WEBUI.md) |
 
@@ -58,8 +58,8 @@ python -m romanbo --port COM3 scan --start 1 --end 32
 python -m romanbo --port COM3 --json config --ids 8,10
 python -m romanbo --port COM3 load --ids 8 --watch 10 --interval 0.1
 
-# 运动：相对 +15° @60°/s，带软件限力
-python -m romanbo --port COM3 jog --id 8 --degrees 15 --speed 60 --max-load 60
+# 运动：相对 +15° @60°/s，带软件限力（阈值 100 + 间隔 3 可跳过起步涌流）
+python -m romanbo --port COM3 jog --id 8 --degrees 15 --speed 60 --max-load 100 --load-every 3
 
 # 多关节 + 到位确认
 python -m romanbo --port COM3 move --targets 8:600,10:480 --speed 30 --readback

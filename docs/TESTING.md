@@ -3,7 +3,7 @@
 ## 日常自检
 
 ```bash
-python -m unittest discover -s tests -t .      # 188 项单元测试（全部通过，无跳过）
+python -m unittest discover -s tests -t .      # 193 项单元测试（全部通过，无跳过）
 python -m romanbo selftest                     # 60 条基准报文（逐字节比对）
 python -m romanbo --mock scan                  # 离线模拟器冒烟
 python examples/04_offline_frames.py           # 打印每条指令的真实报文
@@ -20,7 +20,7 @@ python examples/04_offline_frames.py           # 打印每条指令的真实报�
 | `tests/test_rsc.py` | `.rsc` 解析与生成（重复键、场景过滤、字段缺失、往返一致） |
 | `tests/test_mock.py` | 整机流程、握手、扫描、示教、播放（离线模拟器）、`capture` 重试语义 |
 | `tests/test_speed.py` | 角速度步进规划、多关节同节拍、`play` 插值 |
-| `tests/test_load.py` | 实测负荷语义、软件限力、别名兼容 |
+| `tests/test_load.py` | 实测负荷语义、软件限力、**抽检间隔在每个入口都生效**、别名兼容 |
 | `tests/test_torque_level.py` | 出力档位 H/M/L/W 的位域与 CLI 取值 |
 | `tests/test_cli.py` | 命令行参数解析与 `move --settle/--readback` 行为 |
 | `tests/test_doc_led.py` | 协议文档 LED 示例与本实现的逐字节交叉校验 |

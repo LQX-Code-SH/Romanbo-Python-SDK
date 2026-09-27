@@ -186,6 +186,13 @@ class Servo:
             回读一次实测负荷（``0x18``），超过阈值即**停止继续下发**并抛出
             `LoadLimitExceeded`——这台硬件没有可用的硬件力矩环，这是唯一
             的限力手段。注意每次负荷回读会占用 ~10~30 ms 往返（会略微拖慢节奏）。
+        :param load_check_every: 每几步抽检一次负荷（默认 ``1`` = 每步都查）。
+            采样点是**发出该步之后立刻**，所以会把「起步涌流」一起量进去：真机实测
+            单步冲击与**步长**成正比（步长 10 ADC 约 130~150、20 ADC 约 155、
+            30 ADC 约 180），且只持续几毫秒就衰减到个位数。阈值因此必须配检查间隔：
+            ``1`` 时阈值要 >150，``3`` 时取 ``100`` 左右即可。
+            对比 `RomanboRobot.move` / `play`：那边在 ``sleep`` **之后**采样，量的是
+            **持续负荷**，天然跳过涌流，同样的阈值不会误报。
         """
         if current is None:
             current = self.get_position()
@@ -221,6 +228,7 @@ class Servo:
                   interval_ms: Optional[int] = None,
                   level: Optional[int] = None,
                   max_load: Optional[int] = None,
+                  load_check_every: int = 1,
                   sleep: Callable[[float], None] = time.sleep,
                   ratio: float = J.RATIO_MAIN, center: int = J.ADC_CENTER) -> int:
         """按**绝对角度**定位（以机械中点 512 为 0°，正方向为 ADC 增大）。
@@ -243,7 +251,8 @@ class Servo:
                 raise ValueError("period_ms 与 speed_dps 只能给出一个")
             self.move_at_speed(target, speed_dps, current=current,
                                interval_ms=interval_ms, torque=torque,
-                               level=level, max_load=max_load, sleep=sleep)
+                               level=level, max_load=max_load,
+                               load_check_every=load_check_every, sleep=sleep)
         return target
 
     def rotate(self, degrees: float, *, period_ms: Optional[int] = None,
@@ -252,6 +261,7 @@ class Servo:
                interval_ms: Optional[int] = None,
                level: Optional[int] = None,
                max_load: Optional[int] = None,
+               load_check_every: int = 1,
                sleep: Callable[[float], None] = time.sleep,
                ratio: float = J.RATIO_MAIN) -> Tuple[int, int]:
         """以**当前位置为基准**转动 ``degrees`` 度，返回 ``(原位置, 目标位置)``。
@@ -275,7 +285,8 @@ class Servo:
                 raise ValueError("period_ms 与 speed_dps 只能给出一个")
             self.move_at_speed(target, speed_dps, current=current,
                                interval_ms=interval_ms, torque=torque,
-                               level=level, max_load=max_load, sleep=sleep)
+                               level=level, max_load=max_load,
+                               load_check_every=load_check_every, sleep=sleep)
         return current, target
 
     #: 语义别名：相对转动
@@ -289,6 +300,7 @@ class Servo:
               interval_ms: Optional[int] = None,
               level: Optional[int] = None,
               max_load: Optional[int] = None,
+              load_check_every: int = 1,
               sleep: Callable[[float], None] = time.sleep,
               on_step: Optional[Callable[[Dict[str, object]], None]] = None
               ) -> List[Dict[str, object]]:
@@ -341,7 +353,8 @@ class Servo:
             if stepwise:
                 self.move_at_speed(target, float(speed_dps), current=current,
                                    interval_ms=interval_ms, torque=None,
-                                   level=level, max_load=max_load, sleep=sleep)
+                                   level=level, max_load=max_load,
+                                   load_check_every=load_check_every, sleep=sleep)
                 current = target
                 sleep(settle)
             else:
@@ -363,7 +376,8 @@ class Servo:
             if stepwise:
                 self.move_at_speed(home, float(speed_dps), current=current,
                                    interval_ms=interval_ms, torque=None,
-                                   level=level, max_load=max_load, sleep=sleep)
+                                   level=level, max_load=max_load,
+                                   load_check_every=load_check_every, sleep=sleep)
                 sleep(settle)
             else:
                 self.set_position(home, level=level)

@@ -74,6 +74,74 @@ class TestStdioEncoding(unittest.TestCase):
         self.assertIn("60", proc.stdout)          # 60 条向量全部跑完
 
 
+class TestLoadEveryFlag(unittest.TestCase):
+    """``--load-every`` 必须存在并透传到库。
+
+    注入 `MockTransport`（负荷恒为 100）+ 阈值 50：中止的 ``step`` 就等于间隔，
+    因此既证明开关被接受（否则 argparse 直接报错），也证明它真的传到了库
+    （而不是被默认值吞掉）。在**进程内**调用，不为每个用例起一个解释器。
+    """
+
+    def _abort_step(self, argv: list[str], func: str) -> int:
+        import contextlib
+        import io
+        import json
+
+        from romanbo.robot import RomanboRobot
+        from romanbo.transport import MockTransport
+
+        mock = MockTransport(servo_ids=[1], load=100)
+        mock.positions[1] = 512
+        robot = RomanboRobot(transport=mock, ack_timeout=0.1).open()
+        try:
+            args = cli.build_parser().parse_args(["--json"] + argv)
+            buffer = io.StringIO()
+            with contextlib.redirect_stdout(buffer):
+                rc = getattr(cli, func)(robot, args)
+            self.assertEqual(rc, 4, "阈值 50 < 负荷 100，应触发限力中止")
+            text = buffer.getvalue()
+            # JSON 是美化过的多行，前面还可能有进度行 → 从第一个 { 起整段解析
+            return json.loads(text[text.index("{"):])["step"]
+        finally:
+            robot.close()
+
+    def test_interval_reaches_the_library(self) -> None:
+        cases = (
+            ("cmd_move", ["move", "--targets", "1:700", "--speed", "60"]),
+            ("cmd_jog", ["jog", "--id", "1", "--degrees", "45", "--speed", "60"]),
+            ("cmd_angle", ["angle", "--id", "1", "--degrees", "45", "--speed", "60"]),
+            ("cmd_sweep", ["sweep", "--id", "1", "--low", "480", "--high", "620",
+                           "--speed", "60"]),
+        )
+        for func, argv in cases:
+            with self.subTest(cmd=argv[0]):
+                step = self._abort_step(
+                    argv + ["--max-load", "50", "--load-every", "3"], func)
+                self.assertEqual(step, 3)
+
+    def test_default_is_the_library_default(self) -> None:
+        """不给 ``--load-every`` 时仍是库默认 1（不改变既有行为）。"""
+        step = self._abort_step(
+            ["jog", "--id", "1", "--degrees", "45", "--speed", "60", "--max-load", "50"],
+            "cmd_jog")
+        self.assertEqual(step, 1)
+
+    def test_flag_is_accepted_by_every_load_command(self) -> None:
+        """五个带 ``--max-load`` 的子命令都要认这个开关。"""
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        demo = os.path.join(root, "examples", "data", "demo.rsc")
+        for argv in (
+            ["move", "--targets", "1:700"],
+            ["jog", "--id", "1", "--degrees", "45"],
+            ["angle", "--id", "1", "--degrees", "45"],
+            ["sweep", "--id", "1", "--low", "480", "--high", "620"],
+            ["play", demo, "--ids", "1"],
+        ):
+            with self.subTest(cmd=argv[0]):
+                args = cli.build_parser().parse_args(argv + ["--load-every", "2"])
+                self.assertEqual(args.load_every, 2)
+
+
 class TestTargetsValidation(unittest.TestCase):
     """``--targets`` 的位置/ID 范围要在参数层挡住。
 

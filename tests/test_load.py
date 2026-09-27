@@ -74,6 +74,67 @@ class TestAccelerate(unittest.TestCase):
         self.assertEqual(self.robot.servo(1).get_accelerate(), 12)
 
 
+class TestLoadCheckInterval(unittest.TestCase):
+    """抽检间隔（``load_check_every``）必须在**每个**入口都生效。
+
+    真机实测（2026-09-27）：起步涌流只持续几毫秒，而 `Servo.move_at_speed` 的采样点
+    在发出该步**之后立刻**，所以间隔 ``1`` 会把涌流当成卡死（步长 10 ADC 时约
+    130~150、30 ADC 时约 180）。原先只有 `move_at_speed` 能设这个间隔，
+    `set_angle` / `rotate` / `sweep` 根本没有该参数，命令行也没有开关——
+    只能靠抬高阈值规避。
+    """
+
+    THRESHOLD = 100
+    COMMON = dict(torque=None, sleep=_noop, interval_ms=100)
+
+    def setUp(self) -> None:
+        self.mock = MockTransport(servo_ids=[1], load=200)        # 恒超阈值
+        self.robot = RomanboRobot(transport=self.mock, ack_timeout=0.1).open()
+        self.mock.positions[1] = 512
+
+    def tearDown(self) -> None:
+        self.robot.close()
+
+    def _abort_step(self, call) -> int:
+        with self.assertRaises(LoadLimitExceeded) as ctx:
+            call()
+        return ctx.exception.step
+
+    def test_every_entry_point_forwards_the_interval(self) -> None:
+        servo = self.robot.servo(1)
+        cases = {
+            "move_at_speed": lambda every: servo.move_at_speed(
+                700, 60, current=512, max_load=self.THRESHOLD,
+                load_check_every=every, **self.COMMON),
+            "set_angle": lambda every: servo.set_angle(
+                45, speed_dps=60, current=512, max_load=self.THRESHOLD,
+                load_check_every=every, **self.COMMON),
+            "rotate": lambda every: servo.rotate(
+                45, speed_dps=60, current=512, max_load=self.THRESHOLD,
+                load_check_every=every, **self.COMMON),
+            "sweep": lambda every: servo.sweep(
+                480, 620, cycles=1, speed_dps=60, readback=False, settle=0.0,
+                return_home=False, max_load=self.THRESHOLD,
+                load_check_every=every, **self.COMMON),
+            # 注意 Robot.move 的 torque 不接受 None（不像 Servo 那边可以直接透传）
+            "move": lambda every: self.robot.move(
+                {1: 700}, speed_dps=60, start={1: 512}, step_interval_ms=100,
+                max_load=self.THRESHOLD, load_check_every=every, sleep=_noop),
+        }
+        for name, call in cases.items():
+            for every in (1, 3):
+                with self.subTest(api=name, every=every):
+                    # 中止步数 == 间隔：说明参数真的传到了库，而不是被默认值吞掉
+                    self.assertEqual(self._abort_step(lambda: call(every)), every)
+
+    def test_no_abort_when_the_threshold_is_above_the_load(self) -> None:
+        servo = self.robot.servo(1)
+        servo.move_at_speed(700, 60, current=512, max_load=255,
+                            load_check_every=3, **self.COMMON)
+        self.assertEqual(servo.last_peak_load, 200)
+        self.assertEqual(self.mock.positions[1], 700, "运动应照常走完")
+
+
 class TestSoftwareLoadLimit(unittest.TestCase):
     def setUp(self) -> None:
         self.mock = MockTransport(servo_ids=[1, 2], load=0)

@@ -22,6 +22,11 @@
 - `.github/workflows/docs.yml`：PR 校验 + 主分支自动部署到 GitHub Pages
 - `.github/workflows/release.yml`：推送 `v*` 标签即构建、校验、从 sdist 冒烟后
   经 Trusted Publishing 发布到 PyPI 并创建 GitHub Release（配置见 `CONTRIBUTING.md`）
+- **命令行限力间隔 `--load-every N`**（`move` / `jog` / `angle` / `sweep` / `play`）：
+  起步涌流只是**几毫秒的瞬态**，而 `move_at_speed` 的采样点就在它峰上，取 `3` 可跳过
+  它（阈值 `100` 左右即可，沿用默认 `1` 时阈值需 >150）。同时给
+  `Servo.set_angle / rotate / sweep` 补上 `load_check_every` 参数——此前这三处根本没有
+  该参数，传进去会被直接忽略（只有 `move_at_speed` 生效）
 - `README.en.md`：英文版项目说明，与中文版互相链接
 
 ### 变更
@@ -35,6 +40,12 @@
   [协议速览](docs/PROTOCOL.md)、[真机实测结论](docs/FINDINGS.md)、[工程文件](docs/RSC.md)、
   [软件限力](docs/LOAD_LIMITING.md)、[测试与自检](docs/TESTING.md)、[安全与已知限制](docs/SAFETY.md)
   八个页面；`docs/README.md` 与文档站导航按「入门 / 协议与硬件 / 接口与数据 / 测试 / 安全」重组
+- **限力机制补上实测机制解释**：`docs/FINDINGS.md` §3 新增单步实验（步长 5/10/20/30 ADC
+  的涌流峰值、以及它只持续十几毫秒的样本序列），`docs/LOAD_LIMITING.md` 据此说明
+  「涌流由**步长**决定」与「两条路径采样点不同（`move`/`play` 在节拍 sleep 之后采样，
+  量的是持续负荷；`jog`/`angle`/`sweep` 发出该步后立刻采样，含涌流）」
+- `docs/CLI.md` 的限力示例改为 `--max-load 100 --load-every 3`（原 `--max-load 60`
+  按实测定会在起步涌流上误触发）
 - **CI action 升到 Node 24 系列**（`checkout` v7、`setup-python` v7、`upload-artifact` v7、
   `download-artifact` v8、`configure-pages` v6、`upload-pages-artifact` v5、`deploy-pages` v5、
   `action-gh-release` v3），消除 "target Node.js 20 but are being forced to run on Node.js 24"

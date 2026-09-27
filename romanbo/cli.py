@@ -100,6 +100,17 @@ def _parse_targets(text: str) -> Dict[int, int]:
     return out
 
 
+#: ``--load-every`` 的统一说明
+_LOAD_EVERY_HELP = ("每 N 步抽检一次实测负荷（默认 1 = 每步都查）；起步涌流只持续"
+                    "几毫秒，取 3 可跳过它（阈值 100 左右即可，取 1 时阈值需 >150）")
+
+
+def _load_every(args: argparse.Namespace, default: int = 1) -> int:
+    """``--load-every`` → ``load_check_every``（未给出时用库默认 ``1``）。"""
+    value = getattr(args, "load_every", None)
+    return max(1, int(value)) if value is not None else default
+
+
 def _emit(payload: object, args: argparse.Namespace) -> None:
     if args.json:
         print(json.dumps(payload, ensure_ascii=False, indent=2, default=str))
@@ -315,6 +326,7 @@ def cmd_move(robot, args) -> int:
     try:
         robot.move(targets, period_ms=args.period, mode=args.mode,
                    speed_dps=args.speed, start=start, max_load=args.max_load,
+                   load_check_every=_load_every(args),
                    level=_parse_level(args.level),
                    sync=not args.no_sync,
                    sync_id=None if args.per_id_sync else P.BROADCAST_ID)
@@ -357,13 +369,15 @@ def cmd_jog(robot, args) -> int:
             _, target = servo.rotate(args.degrees, period_ms=period,
                                      speed_dps=args.speed, current=current,
                                      level=_parse_level(args.level),
-                                     max_load=args.max_load)
+                                     max_load=args.max_load,
+                                     load_check_every=_load_every(args))
         else:
             target = max(J.ADC_MIN, min(J.ADC_MAX, current + args.delta))
             if args.speed is not None:
                 servo.move_at_speed(target, args.speed, current=current,
                                     level=_parse_level(args.level),
-                                    max_load=args.max_load)
+                                    max_load=args.max_load,
+                                    load_check_every=_load_every(args))
             else:
                 servo.set_position(target, period_ms=period)
     except LoadLimitExceeded as exc:
@@ -401,7 +415,8 @@ def cmd_angle(robot, args) -> int:
             target = servo.set_angle(args.degrees, speed_dps=args.speed,
                                      current=current,
                                      level=_parse_level(args.level),
-                                     max_load=args.max_load)
+                                     max_load=args.max_load,
+                                     load_check_every=_load_every(args))
             wait_s = abs(target - current) * J.RATIO_MAIN / args.speed
             period = None
         else:
@@ -458,6 +473,7 @@ def cmd_sweep(robot, args) -> int:
             all_records.extend(servo.sweep(
                 low, high, cycles=args.cycles, period_ms=args.period,
                 speed_dps=args.speed, max_load=args.max_load,
+                load_check_every=_load_every(args),
                 level=_parse_level(args.level),
                 readback=not args.no_readback, return_home=not args.no_return,
                 on_step=_report))
@@ -696,6 +712,7 @@ def cmd_play(robot, args) -> int:
                             ids=wanted,
                             level=_parse_level(args.level),
                             max_load=args.max_load,
+                            load_check_every=_load_every(args),
                             on_frame=_on_frame, stop_event=stop_event)
     except KeyboardInterrupt:
         stop_event.set()
@@ -842,6 +859,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="出力档位 H=最大/M=中/L=小/W=轮子（也可写 0..3）")
     p.add_argument("--max-load", type=int, default=None,
                    help="软件限力阈值（实测负荷）；超限即停止并返回退出码 4")
+    p.add_argument("--load-every", type=int, default=None, metavar="N",
+                   help=_LOAD_EVERY_HELP)
     p.add_argument("--no-capture", action="store_true",
                    help="--speed 时不预读起始位置（缺失的关节直接跳到目标）")
     p.add_argument("--torque", choices=("on", "off"), default="on")
@@ -873,6 +892,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="出力档位 H=最大/M=中/L=小/W=轮子（也可写 0..3）；见 SERVO_SPEC §5.2.1")
     p.add_argument("--max-load", type=int, default=None,
                    help="软件限力阈值（实测负荷 0..255）；超限即停止，退出码 4")
+    p.add_argument("--load-every", type=int, default=None, metavar="N",
+                   help=_LOAD_EVERY_HELP)
     p.set_defaults(func=cmd_jog)
 
     p = sub.add_parser("angle", help="绝对角度定位（中点 512 为 0°）")
@@ -888,6 +909,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="出力档位 H/M/L/W（也可写 0..3）")
     p.add_argument("--max-load", type=int, default=None,
                    help="软件限力阈值（实测负荷 0..255）；超限即停止，退出码 4")
+    p.add_argument("--load-every", type=int, default=None, metavar="N",
+                   help=_LOAD_EVERY_HELP)
     p.set_defaults(func=cmd_angle)
 
     p = sub.add_parser("sweep", help="往复运动演示（对应「反复动作」）")
@@ -905,6 +928,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--level", default=None, help="出力档位 H/M/L/W（也可写 0..3）")
     p.add_argument("--max-load", type=int, default=None,
                    help="软件限力阈值（实测负荷 0..255）；超限即停止，退出码 4")
+    p.add_argument("--load-every", type=int, default=None, metavar="N",
+                   help=_LOAD_EVERY_HELP)
     p.add_argument("--no-readback", action="store_true",
                    help="不逐步回读位置（更快，但无法验证）")
     p.add_argument("--no-return", action="store_true",
@@ -1006,6 +1031,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="不预读起始位置（首帧将退回文件 Period）")
     p.add_argument("--max-load", type=int, default=None,
                    help="软件限力阈值（实测负荷 0..255）；超限即停止，退出码 4")
+    p.add_argument("--load-every", type=int, default=None, metavar="N",
+                   help=_LOAD_EVERY_HELP)
     p.add_argument("--level", default=None, help="出力档位 H/M/L/W（也可写 0..3）")
     p.add_argument("--torque", choices=("on", "off"), default="on")
     p.add_argument("--mode", choices=("position", "next"), default="position",
