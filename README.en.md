@@ -209,7 +209,8 @@ Details: [`docs/SAFETY.md`](docs/SAFETY.md) and [`docs/SERVO_SPEC.md`](docs/SERV
 | [Byte-level spec](docs/SERVO_SPEC.md) | per-command request/response layouts, timing constraints, verification marks |
 | [Hardware findings](docs/FINDINGS.md) | every measurement: speed, load, timing, quarantine, frame gap, console checks |
 | [Testing](docs/TESTING.md) | unit tests, self-check, docs build |
-| [Test plan & records](docs/SERVO_TEST_PLAN.md) | graded test cases, acceptance thresholds, results |
+| [Test plan](docs/SERVO_TEST_PLAN.md) | graded test cases, acceptance thresholds, record template |
+| [Test reports](docs/TEST_REPORTS.md) | per-run environment, baseline, case results, verdict |
 | [Evidence log](docs/evidence/README.md) | raw probe traffic |
 | [API reference](docs/api.md) | auto-generated from docstrings |
 

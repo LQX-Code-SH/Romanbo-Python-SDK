@@ -138,7 +138,8 @@ with RomanboRobot("/dev/ttyUSB0") as robot:      # 或 connect("COM3", mock=True
 | [字节级协议规格](docs/SERVO_SPEC.md) | 逐命令请求/回包布局、时序、数据语义 |
 | [真机实测结论](docs/FINDINGS.md) | 全部实测数据与结论（角速度、负荷、时序、帧间隔…） |
 | [测试与自检](docs/TESTING.md) | 单元测试、基准报文自检、MkDocs 构建 |
-| [测试方案与记录](docs/SERVO_TEST_PLAN.md) | L0~L8 分级用例、判定门限、结果记录、缺陷回归 |
+| [测试方案](docs/SERVO_TEST_PLAN.md) | L0~L9 分级用例、判定门限、记录模板、缺陷回归 |
+| [真机测试记录](docs/TEST_REPORTS.md) | 每轮环境、基线快照、逐条结果、准出结论、当轮缺陷 |
 | [证据日志](docs/evidence/README.md) | 真机探针原始收发字节 |
 | [API 参考](docs/api.md) | 由 docstring 自动生成，不会与代码脱节 |
 
