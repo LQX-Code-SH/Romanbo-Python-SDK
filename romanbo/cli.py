@@ -201,8 +201,17 @@ def _port_advice(reason: str, posix: bool) -> List[str]:
     return ["端口名可能不对，或适配器刚被拔插；用 ports --json 看详情"]
 
 
-#: ``ports --fix`` 写入的规则文件（内容与仓库里的 deploy/99-usb-serial.rules 同一套）
-UDEV_RULE_PATH = "/etc/udev/rules.d/99-romanbo-usb-serial.rules"
+#: ``ports --fix`` 写入的规则文件。
+#:
+#: 前缀必须是 **60**：udev 按**文件名顺序**执行规则，而执行 ``uaccess`` 内建的那条在
+#: 系统规则 ``73-seat-late.rules`` 里——前缀写 ``99-`` 就永远晚了：``udevadm info`` 里
+#: 能看到 ``CURRENT_TAGS=:uaccess:``（tag 加上了），**ACL 却永远不会生成**，症状是
+#: "规则装了、tag 有了，还是 Permission denied"（2026-09-27 实测）。
+UDEV_RULE_PATH = "/etc/udev/rules.d/60-romanbo-usb-serial.rules"
+
+#: 早期版本用过的文件名：``--fix`` 顺手清掉，免得两份规则并存
+UDEV_RULE_LEGACY = ("/etc/udev/rules.d/99-romanbo-usb-serial.rules",
+                    "/etc/udev/rules.d/99-usb-serial.rules")
 
 
 def _fix_port_permissions(rows: List[Dict[str, object]],
@@ -249,6 +258,9 @@ def _fix_port_permissions(rows: List[Dict[str, object]],
     print(f"  将写入 {UDEV_RULE_PATH}：")
     for rule in rules:
         print(f"    {rule}")
+    stale = [path for path in UDEV_RULE_LEGACY if os.path.exists(path)]
+    for path in stale:
+        print(f"  并删除早期的重复规则 {path}（避免两份并存）")
     print("  并执行：sudo udevadm control --reload && sudo udevadm trigger "
           "--action=change --subsystem-match=tty")
     if not getattr(args, "yes", False):
@@ -263,15 +275,26 @@ def _fix_port_permissions(rows: List[Dict[str, object]],
         # 不捕获输出：sudo 的密码提示走 tty，要让用户看得见也能输入。
         subprocess.run(["sudo", "tee", UDEV_RULE_PATH], input=content, text=True,
                        stdout=subprocess.DEVNULL, check=True)
+        for path in UDEV_RULE_LEGACY:
+            if os.path.exists(path):
+                subprocess.run(["sudo", "rm", "-f", path], check=True)
         subprocess.run(["sudo", "udevadm", "control", "--reload"], check=True)
         subprocess.run(["sudo", "udevadm", "trigger", "--action=change",
                         "--subsystem-match=tty"], check=True)
+        # trigger 只是**排队**事件，立刻探测会读到旧权限（第一次就是这么误报"仍然打不开"）
+        subprocess.run(["sudo", "udevadm", "settle"], check=False)
     except (OSError, subprocess.CalledProcessError) as exc:
         print(f"  执行失败：{exc}", file=sys.stderr)
         print("  可手工执行，步骤见 docs/INSTALL.md", file=sys.stderr)
         return 5
 
-    usable = [str(row["device"]) for row in list_serial_ports() if not row["busy"]]
+    # 复验（留几次重试：udev 处理事件是异步的，settle 之外再兜一层）
+    usable: List[str] = []
+    for _ in range(3):
+        usable = [str(row["device"]) for row in list_serial_ports() if not row["busy"]]
+        if usable:
+            break
+        time.sleep(0.3)
     print(f"  复验：可用串口 {usable or '（仍然打不开）'}")
     if usable:
         print("  已放权 ✅（若仍报权限不足，注销重新登录一次让 dialout 组生效）")

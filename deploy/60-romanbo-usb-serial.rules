@@ -1,0 +1,35 @@
+# ROMANBO 舵机总线 —— USB 串口权限（FTDI FT230X: 0403:6015）
+#
+# 装法（一次性，二选一）：
+#   ① 一条命令搞定（推荐；规则按设备真实的 VID:PID 生成）：
+#        python -m romanbo ports --fix
+#   ② 手工：
+#        sudo cp deploy/60-romanbo-usb-serial.rules /etc/udev/rules.d/
+#        sudo udevadm control --reload && sudo udevadm trigger
+#
+# 为什么需要它：Linux 的串口节点默认是 ``crw-rw---- root:dialout``，用户不在 ``dialout``
+# 组就报 ``PermissionError``；而 ``sudo chmod 666 /dev/ttyUSBx`` 只是**临时**的——重插后
+# 节点重建、权限回退，脚本又会突然失败。
+#
+# !!! warning "文件名前缀必须排在 73 之前"
+#     udev **按文件名顺序**执行规则，而真正执行 ``uaccess`` 内建的是系统规则
+#     ``73-seat-late.rules``（``TAG=="uaccess" → RUN{builtin}+="uaccess"``）。
+#     所以给出 ``TAG+="uaccess"`` 的规则必须**排在 73 前面**——前缀写成 ``99-`` 就永远
+#     晚了：``udevadm info`` 里能看到 ``CURRENT_TAGS=:uaccess:``（tag 确实加上了），
+#     但 ACL 永远不会生成，表现是"规则装了、tag 有了，却还是 Permission denied"
+#     （2026-09-27 实测踩到）。本文件用 ``60-`` 前缀就是为此。
+#
+# 另外三个坑：
+#   1. ``sudo chmod 666`` 之后跑 ``udevadm trigger``，chmod 会被按规则重新套用覆盖掉
+#      （节点退回 0660）。要手动放权就放在 trigger **之后**。
+#   2. 只 ``usermod -aG dialout`` 而没**注销重新登录**，当前会话仍然打不开；
+#      ``id -nG | grep dialout`` 一眼可查。
+#   3. ``ATTRS{idVendor}``/``idProduct`` 必须是真实 16 进制 ID（不是字面量 ``xxxx``），
+#      属性名是 ``ACTION`` 而不是 ``KERNELACTION``；这两种写错都**静默失效**。
+#
+# 换别的适配器时先 ``lsusb`` 查 ID（形状 ``ID 0403:6015``）再改下面这一行。
+#
+# 本文件的规则行与 romanbo/transport.py 的 UDEV_RULE_TEMPLATE 同源，
+# 改动要同步（tests/test_cli.py::TestUdevRuleHelpers 会守住一致性）。
+
+ACTION=="add|change", SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6015", MODE="0660", GROUP="dialout", TAG+="uaccess"

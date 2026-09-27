@@ -56,16 +56,33 @@ class TestUdevRuleHelpers(unittest.TestCase):
     """规则模板与 VID/PID 解析：``ports --fix`` 与仓库文件必须同源。"""
 
     def test_shipped_rule_file_matches_the_template(self) -> None:
-        """仓库里的 `deploy/99-usb-serial.rules` 必须等于代码生成的规则（防漂移）。"""
+        """仓库里的规则文件必须等于代码生成的规则（防漂移）。"""
         import pathlib
 
         from romanbo.transport import udev_rule_for
 
         root = pathlib.Path(__file__).resolve().parent.parent
-        text = (root / "deploy" / "99-usb-serial.rules").read_text(encoding="utf-8")
-        rules = [line for line in text.splitlines()
+        path = root / "deploy" / "60-romanbo-usb-serial.rules"
+        rules = [line for line in path.read_text(encoding="utf-8").splitlines()
                  if line and not line.startswith("#")]
         self.assertEqual(rules, [udev_rule_for("0403", "6015")])
+
+    def test_rule_file_name_sorts_before_the_uaccess_builtin(self) -> None:
+        """规则文件名必须排在 ``73-seat-late.rules`` **之前**。
+
+        udev 按文件名顺序执行规则，而执行 ``uaccess`` 内建的是系统规则 73——
+        前缀写成 ``99-`` 的话 tag 会照样加上（``udevadm info`` 里看得到
+        ``CURRENT_TAGS=:uaccess:``）但 **ACL 永远不会生成**，症状是"规则装了、tag 有了，
+        还是 Permission denied"（2026-09-27 实测踩到）。
+        """
+        import pathlib
+
+        name = pathlib.Path(cli.UDEV_RULE_PATH).name
+        self.assertLess(name, "73-seat-late.rules",
+                        "排到 73 之后，uaccess 内建就不会为它跑")
+        self.assertTrue(name.startswith("60-"), name)
+        deploy = pathlib.Path(__file__).resolve().parent.parent / "deploy" / name
+        self.assertTrue(deploy.exists(), f"仓库里应有同名文件：{deploy}")
 
     def test_parse_usb_ids(self) -> None:
         from romanbo.transport import parse_usb_ids

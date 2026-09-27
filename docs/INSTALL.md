@@ -76,9 +76,15 @@ python -m romanbo ports --fix        # 按设备真实的 VID:PID 生成规则�
 不想用这个命令的话，手工等价操作为：
 
 ```bash
-sudo cp deploy/99-usb-serial.rules /etc/udev/rules.d/
+sudo cp deploy/60-romanbo-usb-serial.rules /etc/udev/rules.d/
 sudo udevadm control --reload && sudo udevadm trigger
 ```
+
+> **文件名前缀不能乱改**：udev 按**文件名顺序**执行规则，而真正执行 `uaccess` 内建的是
+> 系统规则 `73-seat-late.rules`（`TAG=="uaccess" → RUN{builtin}+="uaccess"`）。给
+> `TAG+="uaccess"` 的规则必须排在 73 **之前**——写成 `99-` 就会"规则装了、tag 也有了
+> （`udevadm info` 里能看到 `CURRENT_TAGS=:uaccess:`），却依然 `Permission denied`"，
+> 因为 ACL 永远不会生成。
 
 规则里带 `TAG+="uaccess"`，systemd-logind 会给当前登录的桌面用户补一条 ACL，所以**装完
 立刻生效、不必重新登录**。（不想依赖 `uaccess` 的话，把规则里的 `MODE`/`GROUP` 配上

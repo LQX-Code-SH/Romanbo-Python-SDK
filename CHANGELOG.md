@@ -16,6 +16,14 @@
   `parse_usb_ids`），并有测试守住一致性，避免两边漂移
 
 ### 修复
+- **规则文件名改为 `60-` 前缀**（原 `99-`）——**uaccess 真正生效的关键**：udev 按文件名顺序
+  执行规则，而执行 `uaccess` 内建的是系统规则 `73-seat-late.rules`，`99-` 排在其后，于是
+  tag 加上了（`udevadm info` 里 `CURRENT_TAGS=:uaccess:` 清清楚楚）**ACL 却永远不生成**，
+  症状是"规则装了、tag 有了，还是 `Permission denied`"（2026-09-27 实测）。仓库文件随之
+  改名 `deploy/60-romanbo-usb-serial.rules`，并有测试守住"名字必须排在 73 之前"
+- `ports --fix` 三处配套：写入新路径、清理早期遗留的 `99-*` 规则（避免两份并存）、
+  trigger 后加 `udevadm settle` + 复验重试（trigger 只是排队事件，立刻探测会读到旧权限
+  ——第一次就是这么误报"仍然打不开"的）
 - **`deploy/99-usb-serial.rules` 加 `TAG+="uaccess"`**：原规则只给 `0660 + dialout`，而
   `dialout` 组要**注销重新登录**才进会话——"装了规则却还是 Permission denied"多半是这个
   （2026-09-27 就卡在这）。`uaccess` 由 systemd-logind 给当前登录的桌面用户补一条 ACL，
