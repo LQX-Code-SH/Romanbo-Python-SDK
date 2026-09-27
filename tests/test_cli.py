@@ -353,6 +353,15 @@ class TestPortsDiagnosis(unittest.TestCase):
         return rc, buf.getvalue()
 
     @staticmethod
+    def _advice_needle() -> str:
+        """当前平台上"权限不足"那条建议里的**独特**片段。
+
+        别写死 POSIX 的字样：Windows 分支没有 `dialout` / `lsof`（仓库里
+        `test_port_hint_covers_every_platform` 早就为此留了教训）。
+        """
+        return "加入 dialout 组" if not sys.platform.startswith("win") else "关闭占用它的程序"
+
+    @staticmethod
     def _row(busy: bool, reason: str | None = None, device: str = "/dev/ttyUSB1",
              description: str = "FT230X Basic UART") -> dict:
         row = {"device": device, "description": description, "hwid": "", "busy": busy}
@@ -399,7 +408,7 @@ class TestPortsDiagnosis(unittest.TestCase):
         rows = [self._row(True, "permission", f"/dev/ttyS{i}") for i in range(34)]
         rows.append(self._row(True, "permission", "/dev/ttyUSB0"))
         _, text = self._render(rows)
-        self.assertEqual(text.count("加入 dialout 组"), 1, "建议应只打一次")
+        self.assertEqual(text.count(self._advice_needle()), 1, "建议应只打一次")
         self.assertEqual(text.count("不可用 35 个"), 1)
         self.assertIn("/dev/ttyUSB0", text)          # 汇总里要点出真实设备名
 
@@ -468,9 +477,26 @@ class TestPortsDiagnosis(unittest.TestCase):
         _, text = self._render(rows, ["ports", "--all"])
         self.assertIn("没有接硬件的占位口（32 个", text)
         self.assertIn("可忽略", text)
-        self.assertEqual(text.count("加入 dialout 组"), 1, "只该给真实设备那组一份建议")
+        self.assertEqual(text.count(self._advice_needle()), 1, "只该给真实设备那组一份建议")
         anonymous_block = text.split("没有接硬件的占位口", 1)[1].split("·", 1)[0]
         self.assertNotIn("chmod", anonymous_block)
+
+    def test_windows_wording_avoids_posix_commands(self) -> None:
+        """把 ``sys.platform`` 打成 ``win32``：**在任何平台**都能跑到 Windows 分支。
+
+        这条是为了守住上面那个坑——2026-09-27 有两个用例写死了 POSIX 的建议文案
+        （``dialout``），只在 ``windows-latest`` 上红，本机 Linux 全绿发现不了。
+        """
+        from unittest import mock
+
+        rows = [self._row(True, "permission"), self._row(True, "busy", "/dev/ttyUSB0")]
+        with mock.patch.object(sys, "platform", "win32"):
+            rc, text = self._render(rows)
+        self.assertEqual(rc, 0)
+        self.assertIn("权限", text)
+        self.assertIn("已被占用", text)
+        for posix_only in ("dialout", "lsof", "fuser", "chmod"):
+            self.assertNotIn(posix_only, text, f"Windows 分支不应出现 {posix_only}")
 
     def test_identified_devices_are_listed_first(self) -> None:
         """``--all`` 下已识别的适配器仍要排在 ``ttyS*`` 占位口之前（真机上它排第 35）。"""
