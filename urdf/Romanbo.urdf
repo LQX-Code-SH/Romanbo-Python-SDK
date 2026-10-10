@@ -1,0 +1,208 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Romanbo arm - generated from SolidWorks assembly (measured joint axes).
+     Joint axes were measured on the actual servo output shafts,
+     so the changed servos are taken into account.
+     NOTE: the zero configuration equals the pose the assembly had when exported. -->
+<robot name="Romanbo">
+
+  <material name="3d_printed"><color rgba="1.0 0.82 0.12 1.0"/></material>
+  <material name="sts3215"><color rgba="0.1 0.1 0.1 1.0"/></material>
+
+  <link name="base_link">
+    <inertial>
+      <origin xyz="0.0190056 -0.00000693 0.02669374" rpy="0 0 0"/>
+      <mass value="0.15717756"/>
+      <inertia ixx="0.00014067" ixy="-0.00000003" ixz="0.00001945" iyy="0.00011979" iyz="0" izz="0.00015252"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><mesh filename="meshes/Romanbo_base.STL"/></geometry>
+      <material name="3d_printed"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><mesh filename="meshes/Romanbo_base.STL"/></geometry>
+    </collision>
+  </link>
+
+  <joint name="Romanbo_shoulder_pan" type="revolute">
+    <origin xyz="0.04507171 0.00001297 0.04522959" rpy="3.14159265 0 3.14159265"/>
+    <parent link="base_link"/>
+    <child link="shoulder_link"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="10" velocity="10" lower="-1.91986" upper="1.91986"/>
+  </joint>
+  <transmission name="Romanbo_shoulder_pan_trans">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="Romanbo_shoulder_pan"><hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface></joint>
+    <actuator name="motor1"><hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface><mechanicalReduction>1</mechanicalReduction></actuator>
+  </transmission>
+
+  <link name="shoulder_link">
+    <inertial>
+      <origin xyz="-0.03096877 -0.00697124 -0.03073694" rpy="0 0 0"/>
+      <mass value="0.11234364"/>
+      <inertia ixx="0.00005195" ixy="0.00000012" ixz="-0.00000289" iyy="0.0000519" iyz="-0.00000096" izz="0.00002905"/>
+    </inertial>
+    <visual>
+      <origin xyz="0.04507171 -0.00001297 0.04522959" rpy="3.14159265 0 3.14159265"/>
+      <geometry><mesh filename="meshes/Romanbo_shoulder.STL"/></geometry>
+      <material name="3d_printed"/>
+    </visual>
+    <collision>
+      <origin xyz="0.04507171 -0.00001297 0.04522959" rpy="3.14159265 0 3.14159265"/>
+      <geometry><mesh filename="meshes/Romanbo_shoulder.STL"/></geometry>
+    </collision>
+  </link>
+
+  <joint name="Romanbo_shoulder_lift" type="revolute">
+    <origin xyz="-0.02971501 -0.00649727 -0.0724" rpy="-1.57079633 0 0.21526495"/>
+    <parent link="shoulder_link"/>
+    <child link="upper_arm_link"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="10" velocity="10" lower="-1.74533" upper="1.74533"/>
+  </joint>
+  <transmission name="Romanbo_shoulder_lift_trans">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="Romanbo_shoulder_lift"><hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface></joint>
+    <actuator name="motor2"><hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface><mechanicalReduction>1</mechanicalReduction></actuator>
+  </transmission>
+
+  <link name="upper_arm_link">
+    <inertial>
+      <origin xyz="0.05925617 0.04182487 -0.00022979" rpy="0 0 0"/>
+      <mass value="0.15086353"/>
+      <inertia ixx="0.00007472" ixy="-0.00003855" ixz="-0.00001244" iyy="0.00017003" iyz="-0.00000873" izz="0.00014543"/>
+    </inertial>
+    <visual>
+      <origin xyz="0.07444572 -0.11762959 -0.00964027" rpy="1.57079633 -0.21526495 3.14159265"/>
+      <geometry><mesh filename="meshes/Romanbo_upper_arm.STL"/></geometry>
+      <material name="3d_printed"/>
+    </visual>
+    <collision>
+      <origin xyz="0.07444572 -0.11762959 -0.00964027" rpy="1.57079633 -0.21526495 3.14159265"/>
+      <geometry><mesh filename="meshes/Romanbo_upper_arm.STL"/></geometry>
+    </collision>
+  </link>
+
+  <joint name="Romanbo_elbow_flex" type="revolute">
+    <origin xyz="0.07960794 0.08406103 -0.0002" rpy="3.14159265 0 3.14159265"/>
+    <parent link="upper_arm_link"/>
+    <child link="lower_arm_link"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="10" velocity="10" lower="-1.69" upper="1.69"/>
+  </joint>
+  <transmission name="Romanbo_elbow_flex_trans">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="Romanbo_elbow_flex"><hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface></joint>
+    <actuator name="motor3"><hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface><mechanicalReduction>1</mechanicalReduction></actuator>
+  </transmission>
+
+  <link name="lower_arm_link">
+    <inertial>
+      <origin xyz="0.06643411 0.03979496 0.00005434" rpy="0 0 0"/>
+      <mass value="0.14069204"/>
+      <inertia ixx="0.00008423" ixy="0.00003966" ixz="0.00000372" iyy="0.00009504" iyz="-0.00000762" izz="0.00009773"/>
+    </inertial>
+    <visual>
+      <origin xyz="0.00516222 -0.20169063 0.00944027" rpy="-1.57079633 0.21526495 0"/>
+      <geometry><mesh filename="meshes/Romanbo_lower_arm.STL"/></geometry>
+      <material name="3d_printed"/>
+    </visual>
+    <collision>
+      <origin xyz="0.00516222 -0.20169063 0.00944027" rpy="-1.57079633 0.21526495 0"/>
+      <geometry><mesh filename="meshes/Romanbo_lower_arm.STL"/></geometry>
+    </collision>
+  </link>
+
+  <joint name="Romanbo_wrist_flex" type="revolute">
+    <origin xyz="0.11429786 0.07147737 -0.0002" rpy="3.14159265 0 3.14159265"/>
+    <parent link="lower_arm_link"/>
+    <child link="wrist_link"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="10" velocity="10" lower="-1.65806" upper="1.65806"/>
+  </joint>
+  <transmission name="Romanbo_wrist_flex_trans">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="Romanbo_wrist_flex"><hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface></joint>
+    <actuator name="motor4"><hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface><mechanicalReduction>1</mechanicalReduction></actuator>
+  </transmission>
+
+  <link name="wrist_link">
+    <inertial>
+      <origin xyz="-0.01172768 0.03274155 0.00740688" rpy="0 0 0"/>
+      <mass value="0.06488907"/>
+      <inertia ixx="0.00003049" ixy="0.00000157" ixz="0.00000305" iyy="0.00002306" iyz="-0.00000174" izz="0.00001822"/>
+    </inertial>
+    <visual>
+      <origin xyz="0.10913564 -0.273168 -0.00964027" rpy="1.57079633 -0.21526495 3.14159265"/>
+      <geometry><mesh filename="meshes/Romanbo_wrist.STL"/></geometry>
+      <material name="3d_printed"/>
+    </visual>
+    <collision>
+      <origin xyz="0.10913564 -0.273168 -0.00964027" rpy="1.57079633 -0.21526495 3.14159265"/>
+      <geometry><mesh filename="meshes/Romanbo_wrist.STL"/></geometry>
+    </collision>
+  </link>
+
+  <joint name="Romanbo_wrist_roll" type="revolute">
+    <origin xyz="-0.01404151 0.03907096 0.0003" rpy="1.57079633 -0.20262092 -2.79217493"/>
+    <parent link="wrist_link"/>
+    <child link="gripper_link"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="10" velocity="10" lower="-2.79253" upper="2.79253"/>
+  </joint>
+  <transmission name="Romanbo_wrist_roll_trans">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="Romanbo_wrist_roll"><hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface></joint>
+    <actuator name="motor5"><hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface><mechanicalReduction>1</mechanicalReduction></actuator>
+  </transmission>
+
+  <link name="gripper_link">
+    <inertial>
+      <origin xyz="-0.00086595 -0.00566132 0.04465906" rpy="0 0 0"/>
+      <mass value="0.0917235"/>
+      <inertia ixx="0.0000426" ixy="0.00000357" ixz="-0.00000834" iyy="0.00003949" iyz="0.00000776" izz="0.00003688"/>
+    </inertial>
+    <visual>
+      <origin xyz="-0.01065811 -0.00795826 -0.33554084" rpy="-0.07767486 -0.34102078 0.0260248"/>
+      <geometry><mesh filename="meshes/Romanbo_gripper.STL"/></geometry>
+      <material name="3d_printed"/>
+    </visual>
+    <collision>
+      <origin xyz="-0.01065811 -0.00795826 -0.33554084" rpy="-0.07767486 -0.34102078 0.0260248"/>
+      <geometry><mesh filename="meshes/Romanbo_gripper.STL"/></geometry>
+    </collision>
+  </link>
+
+  <joint name="Romanbo_gripper" type="revolute">
+    <origin xyz="0.00423498 0.01954648 0.04158296" rpy="1.57079633 0.00391439 -1.78416044"/>
+    <parent link="gripper_link"/>
+    <child link="moving_jaw_link"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="10" velocity="10" lower="-0.95993" upper="0.95993"/>
+  </joint>
+  <transmission name="Romanbo_gripper_trans">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="Romanbo_gripper"><hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface></joint>
+    <actuator name="motor6"><hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface><mechanicalReduction>1</mechanicalReduction></actuator>
+  </transmission>
+
+  <link name="moving_jaw_link">
+    <inertial>
+      <origin xyz="-0.0179688 0.02422444 0.00093306" rpy="0 0 0"/>
+      <mass value="0.02056095"/>
+      <inertia ixx="0.00000816" ixy="-0.00000139" ixz="0.00000369" iyy="0.00000855" iyz="0.00000105" izz="0.00000674"/>
+    </inertial>
+    <visual>
+      <origin xyz="0.03151062 -0.37700335 0.00873128" rpy="0.55274908 1.1568459 2.16372407"/>
+      <geometry><mesh filename="meshes/Romanbo_jaw.STL"/></geometry>
+      <material name="3d_printed"/>
+    </visual>
+    <collision>
+      <origin xyz="0.03151062 -0.37700335 0.00873128" rpy="0.55274908 1.1568459 2.16372407"/>
+      <geometry><mesh filename="meshes/Romanbo_jaw.STL"/></geometry>
+    </collision>
+  </link>
+
+</robot>
