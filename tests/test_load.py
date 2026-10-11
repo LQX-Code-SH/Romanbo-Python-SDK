@@ -148,7 +148,7 @@ class TestSoftwareLoadLimit(unittest.TestCase):
     def test_move_at_speed_completes_when_load_is_low(self) -> None:
         sent = self.robot.servo(1).move_at_speed(
             614, 60, current=512, interval_ms=100, max_load=50, sleep=_noop)
-        self.assertEqual(sent, [532, 553, 573, 594, 614])
+        self.assertEqual(sent, [529, 546, 563, 580, 597, 614])
         self.assertEqual(self.robot.servo(1).last_peak_load, 0)
 
     def test_move_at_speed_aborts_on_high_load(self) -> None:
@@ -159,7 +159,7 @@ class TestSoftwareLoadLimit(unittest.TestCase):
                                               sleep=_noop)
         exc = ctx.exception
         self.assertEqual((exc.id, exc.load, exc.limit, exc.step), (1, 200, 50, 1))
-        self.assertEqual(exc.as_dict()["position"], 532)
+        self.assertEqual(exc.as_dict()["position"], 529)
         self.assertEqual(self.robot.servo(1).last_peak_load, 200)
 
     def test_robot_move_aborts(self) -> None:

@@ -2,7 +2,10 @@
 <!-- Romanbo arm - generated from SolidWorks assembly (measured joint axes).
      Joint axes were measured on the actual servo output shafts,
      so the changed servos are taken into account.
-     NOTE: the zero configuration equals the pose the assembly had when exported. -->
+     NOTE: Zero configuration re-adjusted so that the former joint values
+     (pan=-0.2, lift=0.98, elbow=0.49, wrist_flex=0.7, wrist_roll=1.65,
+     gripper=-0.62) now correspond to joint positions of 0.
+     Limits were shifted accordingly (-q0) to preserve the physical range. -->
 <robot name="Romanbo">
 
   <material name="3d_printed"><color rgba="1.0 0.82 0.12 1.0"/></material>
@@ -26,7 +29,7 @@
   </link>
 
   <joint name="Romanbo_shoulder_pan" type="revolute">
-    <origin xyz="0.04507171 0.00001297 0.04522959" rpy="3.14159265 0 3.14159265"/>
+    <origin xyz="0.04507171 0.00001297 0.04522959" rpy="3.14159265 0 -2.94159266"/>
     <parent link="base_link"/>
     <child link="shoulder_link"/>
     <axis xyz="0 0 1"/>
@@ -56,7 +59,7 @@
   </link>
 
   <joint name="Romanbo_shoulder_lift" type="revolute">
-    <origin xyz="-0.02971501 -0.00649727 -0.0724" rpy="-1.57079633 0 0.21526495"/>
+    <origin xyz="-0.02971501 -0.00649727 -0.0724" rpy="-1.57079633 0.98 0.21526495"/>
     <parent link="shoulder_link"/>
     <child link="upper_arm_link"/>
     <axis xyz="0 0 1"/>
@@ -86,10 +89,10 @@
   </link>
 
   <joint name="Romanbo_elbow_flex" type="revolute">
-    <origin xyz="0.07960794 0.08406103 -0.0002" rpy="3.14159265 0 3.14159265"/>
+    <origin xyz="0.07960794 0.08406103 -0.0002" rpy="3.14159265 0 2.65159265"/>
     <parent link="upper_arm_link"/>
     <child link="lower_arm_link"/>
-    <axis xyz="0 0 1"/>
+    <axis xyz="0 0 -1"/>
     <limit effort="10" velocity="10" lower="-1.69" upper="1.69"/>
   </joint>
   <transmission name="Romanbo_elbow_flex_trans">
@@ -116,7 +119,7 @@
   </link>
 
   <joint name="Romanbo_wrist_flex" type="revolute">
-    <origin xyz="0.11429786 0.07147737 -0.0002" rpy="3.14159265 0 3.14159265"/>
+    <origin xyz="0.11429786 0.07147737 -0.0002" rpy="3.14159265 0 2.44159265"/>
     <parent link="lower_arm_link"/>
     <child link="wrist_link"/>
     <axis xyz="0 0 1"/>
@@ -146,10 +149,10 @@
   </link>
 
   <joint name="Romanbo_wrist_roll" type="revolute">
-    <origin xyz="-0.01404151 0.03907096 0.0003" rpy="1.57079633 -0.20262092 -2.79217493"/>
+    <origin xyz="-0.01404151 0.03907096 0.0003" rpy="-1.57079634 -1.28897173 0.34941774"/>
     <parent link="wrist_link"/>
     <child link="gripper_link"/>
-    <axis xyz="0 0 1"/>
+    <axis xyz="0 0 -1"/>
     <limit effort="10" velocity="10" lower="-2.79253" upper="2.79253"/>
   </joint>
   <transmission name="Romanbo_wrist_roll_trans">
@@ -176,11 +179,11 @@
   </link>
 
   <joint name="Romanbo_gripper" type="revolute">
-    <origin xyz="0.00423498 0.01954648 0.04158296" rpy="1.57079633 0.00391439 -1.78416044"/>
+    <origin xyz="0.00423498 0.01954648 0.04158296" rpy="1.57079633 0.62391439 -1.78416044"/>
     <parent link="gripper_link"/>
     <child link="moving_jaw_link"/>
     <axis xyz="0 0 1"/>
-    <limit effort="10" velocity="10" lower="-0.95993" upper="0.95993"/>
+    <limit effort="10" velocity="10" lower="-0.33993" upper="1.57993"/>
   </joint>
   <transmission name="Romanbo_gripper_trans">
     <type>transmission_interface/SimpleTransmission</type>

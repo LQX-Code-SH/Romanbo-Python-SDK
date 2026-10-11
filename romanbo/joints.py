@@ -3,7 +3,8 @@
 常量依据
 --------
 * 机械中点 ``mCenterValue = 512``
-* ADC → 角度比例 ``Ratio = 0.2932551``；下限方向 ``UnderRatio = 0.2636719``；
+* ADC → 角度比例 ``Ratio = 0.3519062``（=360/1023：ADC 满量程对应整圈 360°，
+  而机械行程仅 300°——厂商文档把行程误当换算依据）；下限方向 ``UnderRatio = 0.2636719``；
   上限方向 ``OverRatio = 0.3222656``
 * 运行循环默认节流 ``RUNDELAY = 0.8``
 * 各机型（无头 / 带头 / 抓取 / 自定义）的电机通道数与关节命名模板
@@ -17,8 +18,11 @@ from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 
 ADC_MIN, ADC_MAX, ADC_CENTER = 0, 1023, 512
 
-#: ≈300/1023，ADC → 角度的主换算系数
-RATIO_MAIN = 0.2932551
+#: =360/1023，ADC → 角度的主换算系数：10 位 ADC（0..1023）对应整圈 360°。
+#: 注意与机械行程区分：舵机实际只能转 300°（±150°，对应 ADC 512±426 ≈ 86..938），
+#: 厂商文档把 300° 行程误当成了 ADC 换算依据（0.2932551），导致读数偏小 ~17%，
+#: 2026-10-11 实测标定后修正。
+RATIO_MAIN = 0.3519062
 #: ≈270/1024，下限方向
 RATIO_UNDER = 0.2636719
 #: ≈330/1024，上限方向
@@ -144,8 +148,16 @@ def frame_period_for_speed(previous: Mapping[int, int], targets: Mapping[int, in
                             min_ms=min_ms, max_ms=max_ms)
 
 
-#: 步进逼近时相邻两步的默认间隔（ms）
-DEFAULT_STEP_INTERVAL_MS = 100
+#: 步进逼近时相邻两步的默认间隔（ms）——**20 ms = 50 Hz 插值**。
+#:
+#: 选 20 ms 的依据（2026-10-11）：一帧在 115200 波特率下约 0.7 ms，加上
+#: `romanbo.protocol.MIN_FRAME_GAP`（实测 <2 ms 会被舵机静默丢弃）约 3 ms/关节帧，
+#: 6 关节整臂一拍约 18 ms，20 ms 节拍放得下；节拍内发不完时由「绝对时刻排拍」
+#: 在后续拍补发（见 `Servo.move_at_speed` / `RomanboRobot._move_stepwise`），
+#: 多关节超载只是优雅降级为实际能达到的节拍，不会丢步。提高频率的直接收益：
+#: 每步位移缩小 ~5 倍（60°/s 下 ~3 ADC），位置指令更密、运动更平滑，且实测
+#: 单步冲击电流与步长成正比，小步长也显著降低起步涌流。
+DEFAULT_STEP_INTERVAL_MS = 20
 #: 步进间隔上限（ms）——很低的角速度需要拉长间隔，否则每步不足 1 个 ADC
 MAX_STEP_INTERVAL_MS = 5000
 

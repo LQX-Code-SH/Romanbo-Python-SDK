@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "home": {
+    "shoulder_pan": 488,
+    "shoulder_lift": 95,
+    "elbow_flex": 774,
+    "wrist_flex": 603,
+    "wrist_roll": 392,
+    "gripper": 228
+  },
+  "joints": {
+    "shoulder_pan": {
+      "urdf_joint": "Romanbo_shoulder_pan",
+      "servo_id": 1,
+      "zero_adc": 500,
+      "direction": 1,
+      "limits_deg": [-110.0, 110.0]
+    },
+    "shoulder_lift": {
+      "urdf_joint": "Romanbo_shoulder_lift",
+      "servo_id": 2,
+      "zero_adc": 357,
+      "direction": 1,
+      "limits_deg": [-100.0, 100.0]
+    },
+    "elbow_flex": {
+      "urdf_joint": "Romanbo_elbow_flex",
+      "servo_id": 3,
+      "zero_adc": 508,
+      "direction": 1,
+      "limits_deg": [-96.84, 96.84]
+    },
+    "wrist_flex": {
+      "urdf_joint": "Romanbo_wrist_flex",
+      "servo_id": 4,
+      "zero_adc": 504,
+      "direction": 1,
+      "limits_deg": [-95.0, 95.0]
+    },
+    "wrist_roll": {
+      "urdf_joint": "Romanbo_wrist_roll",
+      "servo_id": 5,
+      "zero_adc": 386,
+      "direction": 1,
+      "limits_deg": [-159.96, 159.96]
+    },
+    "gripper": {
+      "urdf_joint": "Romanbo_gripper",
+      "servo_id": 6,
+      "zero_adc": 240,
+      "direction": 1,
+      "limits_deg": [-19.48, 90.53]
+    }
+  }
+}

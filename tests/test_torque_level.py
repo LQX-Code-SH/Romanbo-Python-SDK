@@ -94,6 +94,16 @@ class TestLevelPlumbing(unittest.TestCase):
         self.assertTrue(self._levels())
         self.assertEqual(set(self._levels()), {P.LEVEL_LOW})
 
+    def test_per_joint_level_table(self) -> None:
+        # robot.move 的 level 也支持 {servo_id: 档位} 逐关节表——机械臂的
+        # 承重关节恒 H 档、其余关节随调用方选择时就靠它
+        self.robot.move({1: 600, 2: 600}, level={1: P.LEVEL_HIGH, 2: P.LEVEL_LOW})
+        by_id: dict[int, set[int]] = {}
+        for f in self.robot.sent_frames:
+            if f[4] == P.ServoCmd.SET_POSITION:
+                by_id.setdefault(f[2], set()).add((f[5] >> 3) & 0x03)
+        self.assertEqual(by_id, {1: {P.LEVEL_HIGH}, 2: {P.LEVEL_LOW}})
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -3,7 +3,7 @@
 ## 日常自检
 
 ```bash
-python -m unittest discover -s tests -t .      # 241 项单元测试（全部通过，无跳过）
+python -m unittest discover -s tests -t .      # 270 项单元测试（全部通过，无跳过）
 python -m romanbo selftest                     # 60 条基准报文（逐字节比对）
 python -m romanbo --mock scan                  # 离线模拟器冒烟
 python examples/04_offline_frames.py           # 打印每条指令的真实报文
@@ -21,12 +21,12 @@ python examples/04_offline_frames.py           # 打印每条指令的真实报�
 | `tests/test_mock.py` | 整机流程、握手、扫描、示教、播放（离线模拟器）、`capture` 重试语义 |
 | `tests/test_speed.py` | 角速度步进规划、多关节同节拍、`play` 插值 |
 | `tests/test_load.py` | 实测负荷语义、软件限力、**抽检间隔在每个入口都生效**、别名兼容 |
-| `tests/test_torque_level.py` | 出力档位 H/M/L/W 的位域与 CLI 取值 |
+| `tests/test_torque_level.py` | 出力档位 H/M/L/W 的位域、CLI 取值、**逐关节档位表** |
 | `tests/test_cli.py` | 命令行参数解析与 `move --settle/--readback` 行为 |
 | `tests/test_doc_led.py` | 协议文档 LED 示例与本实现的逐字节交叉校验 |
 | `tests/test_standalone.py` | 脱离仓库可用性（子进程屏蔽 `serial`）、收发锁、帧间隔 |
 | `tests/test_servo.py` | 舵机层健壮性：畸形/截断回包不得**静默**变成错误数值 |
-| `tests/test_webui.py` | 控制台后端：访问控制（令牌 / Host）、前后端接口契约、页面静态一致性、**运动期间的并发响应**、请求体上限 |
+| `tests/test_webui.py` | 控制台后端：访问控制（令牌 / Host）、前后端接口契约、页面静态一致性、**运动期间的并发响应**、请求体上限、**整臂使能（承重关节 H 档）与 3 轮扫描健康判定** |
 | `tests/test_doc_counts.py` | 文档里写的「当前状态」数字（用例总数）与代码一致；历史记录不受影响 |
 
 ## 文档站

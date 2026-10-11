@@ -21,6 +21,8 @@ import urllib.request
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from romanbo import cli  # noqa: E402
+from romanbo import joints as J  # noqa: E402
+from romanbo import protocol as P  # noqa: E402
 from romanbo.webui_page import PAGE  # noqa: E402
 from romanbo.servo import LoadLimitExceeded  # noqa: E402
 from romanbo.webui import WebConsole, make_server  # noqa: E402
@@ -68,10 +70,10 @@ class _ServerMixin:
             request.add_header("Host", host)
         try:
             with urllib.request.urlopen(request, timeout=10) as resp:
-                payload = resp.read().decode("utf-8")
+                payload = resp.read().decode("utf-8", "replace")
                 status = resp.status
         except urllib.error.HTTPError as exc:
-            payload = exc.read().decode("utf-8")
+            payload = exc.read().decode("utf-8", "replace")
             status = exc.code
         try:
             return status, json.loads(payload)
@@ -184,7 +186,26 @@ class TestWebConsole(_ServerMixin, unittest.TestCase):
     def test_angle_input_is_converted(self) -> None:
         status, payload = self.call("/api/servo/4/goto", {"angle": 30.0})
         self.assertEqual(status, 200)
-        self.assertAlmostEqual(payload["target"], 614, delta=1)
+        # 30° × 1023/360 ≈ 85 ADC（RATIO_MAIN = 360/1023）
+        self.assertAlmostEqual(payload["target"], 597, delta=1)
+
+    def test_scan_returns_after_round1_and_falls_back(self) -> None:
+        """扫描第 1 轮即返回，剩余 2 轮后台兜底并更新 /api/state。"""
+        _, payload = self.call("/api/scan", {"start": 1, "end": 4})
+        self.assertEqual(payload["rounds"], 1)
+        self.assertEqual(payload["total_rounds"], 3)
+        self.assertEqual(payload["pending_rounds"], 2)
+        self.assertEqual(payload["found"], [1, 2, 3, 4])
+        self.assertEqual(payload["arms"], {})
+        # 等后台兜底轮跑完（mock 全范围每轮 ~2 s，空 ID 各等 0.15 s 探测超时）
+        deadline = time.time() + 8
+        state = self.call("/api/state")[1]
+        while state["scan_rounds"] < 3 and time.time() < deadline:
+            time.sleep(0.01)
+            state = self.call("/api/state")[1]
+        self.assertEqual(state["scan_rounds"], 3)
+        self.assertEqual(state["online"], [1, 2, 3, 4])
+        self.assertEqual(state["arms"], {})
 
     def test_pid_and_limit_write_then_readback(self) -> None:
         status, payload = self.call("/api/servo/5/pid", {"p": 100, "i": 1, "d": 20})
@@ -354,11 +375,32 @@ class TestPageApiContract(_ServerMixin, unittest.TestCase):
         ("POST", "/api/stop_all", {}),
         ("GET", "/api/frames?since=0", None),
         ("POST", "/api/disconnect", {}),
+        ("GET", "/api/arm/info", None),
+        ("GET", "/api/arm/state", None),
     )
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.start_server(WebConsole(mock=False))       # 由上面的 connect 自己连
+        # 机械臂接口（TF 可视化）依赖 config/*.json 与 urdf/——测试环境下按
+        # 仓库根目录显式加载；仓库里没有这些文件时只测上面的通用行。
+        from romanbo.arm import discover
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        skeleton, arms = discover(os.path.join(root, "urdf", "Romanbo.urdf"),
+                                  os.path.join(root, "config"))
+        cls.start_server(WebConsole(mock=False, arms=arms, skeleton=skeleton))
+        if arms:
+            key = sorted(arms)[0]
+            first = sorted(arms[key].joints)[0]
+            rows = [("POST", f"/api/arm/{key}/goto", {"targets": {first: 10.0}}),
+                    ("POST", f"/api/arm/{key}/home", {"speed_dps": 60}),
+                    ("POST", f"/api/arm/{key}/torque", {"on": True})]
+            # 运动类要在 disconnect 之前（连接是上面 connect 行建立的）
+            base = list(cls.CALLS)
+            cut = base.index(("POST", "/api/disconnect", {}))
+            cls.CALLS = tuple(base[:cut]) + tuple(rows) + tuple(base[cut:])
+        if skeleton and skeleton.links:
+            mesh_file = skeleton.links[sorted(skeleton.links)[0]][0]["file"]
+            cls.CALLS = tuple(cls.CALLS) + (("GET", f"/api/mesh/{mesh_file}", None),)
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -369,6 +411,42 @@ class TestPageApiContract(_ServerMixin, unittest.TestCase):
             with self.subTest(path=path):
                 status, payload = self.call(path, body)
                 self.assertEqual(status, 200, f"{method} {path} -> {status} {payload}")
+
+    # -- mesh（STL 文件服务）----------------------------------------------- #
+
+    def _raw_get(self, path: str) -> tuple[int, bytes]:
+        """二进制响应不能走 `call`（它按 UTF-8 解码 JSON）。"""
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
+        try:
+            conn.request("GET", path, headers={"X-Robot-Token": TOKEN})
+            resp = conn.getresponse()
+            return resp.status, resp.read()
+        finally:
+            conn.close()
+
+    def test_mesh_serves_binary_stl(self) -> None:
+        status, body = self._raw_get("/api/mesh/meshes/Romanbo_base.STL")
+        self.assertEqual(status, 200)
+        # 二进制 STL 布局自检：84 + 50×三角形数 == 文件长度
+        self.assertGreater(len(body), 84)
+        self.assertEqual(84 + 50 * int.from_bytes(body[80:84], "little"), len(body))
+
+    def test_mesh_rejects_path_escape_and_wrong_type(self) -> None:
+        for path in ("/api/mesh/../romanbo/webui.py",          # ../ 逃逸
+                     "/api/mesh/meshes/../../pyproject.toml",  # 逃逸 + 非 STL
+                     "/api/mesh/meshes/missing.STL",           # 不存在
+                     "/api/mesh/romanbo/webui_page.py"):       # 白名单外类型
+            with self.subTest(path=path):
+                status, _ = self._raw_get(path)
+                self.assertEqual(status, 409)
+
+    def test_mesh_requires_token(self) -> None:
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
+        try:
+            conn.request("GET", "/api/mesh/meshes/Romanbo_base.STL")
+            self.assertEqual(conn.getresponse().status, 401)
+        finally:
+            conn.close()
 
     def test_contract_table_still_matches_page(self) -> None:
         """表里的接口必须仍被页面调用，否则说明页面删了功能、表要同步。
@@ -382,12 +460,457 @@ class TestPageApiContract(_ServerMixin, unittest.TestCase):
             literal = path.split("?")[0]
             if literal in PAGE:
                 continue
+            if literal.startswith("/api/mesh/"):
+                # 页面里是 "/api/mesh/" + 文件名拼接（文件名来自 /api/arm/info）
+                self.assertIn("/api/mesh/", PAGE)
+                continue
             tail = literal.rsplit("/", 1)[-1]
             if tail.isdigit():                      # /api/servo/1 —— 页面里是拼接的
                 self.assertIn("/api/servo/", PAGE)
                 continue
             self.assertTrue(f'"/{tail}"' in PAGE or f'/{tail}"' in PAGE,
                             f"页面已不再调用 {literal}，请同步本表")
+
+
+class TestServoLedIndicators(unittest.TestCase):
+    """舵机 LED 状态指示：绿 = 通信正常、蓝 = 力矩使能、灭 = 断开连接。
+
+    编码见 `WebConsole._set_led` / 协议 §5.4：``d[5]`` 的 bit6=绿(0x40)、
+    bit5=蓝(0x20)，全 0 = 灭。
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        from romanbo.arm import discover
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        skeleton, arms = discover(os.path.join(root, "urdf", "Romanbo.urdf"),
+                                  os.path.join(root, "config"))
+        if not arms:
+            raise unittest.SkipTest("仓库缺少 config/*.json 或 urdf/，跳过")
+        cls.arms = arms
+        cls.console = WebConsole(mock=True, arms=arms, skeleton=skeleton)
+        cls.console.connect()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls.console.disconnect()
+
+    def setUp(self) -> None:
+        self.console.scan()
+        self.console._robot.sent_frames.clear()
+
+    # -- 工具 -------------------------------------------------------------- #
+
+    def _led(self, byte: int) -> set[int]:
+        """SET_LED 帧（d[5] == byte）→ 舵机 ID 集合。"""
+        return {f[2] for f in self.console._robot.sent_frames
+                if f[4] == P.ServoCmd.SET_LED and f[5] == byte}
+
+    # -- 用例 -------------------------------------------------------------- #
+
+    def test_scan_success_lights_green(self) -> None:
+        self.console._robot.sent_frames.clear()
+        self.console.scan(1, 4)
+        self.assertEqual(self._led(0x40), {1, 2, 3, 4},
+                         "扫描成功应给所有在线舵机亮绿灯（d[5]=0x40）")
+
+    def test_arm_torque_toggles_blue_and_green(self) -> None:
+        key = sorted(self.arms)[0]
+        ids = set(self.arms[key].servo_ids)
+        self.console.arm_torque(key, True)
+        self.assertEqual(self._led(0x20), ids, "使能 → 蓝灯（d[5]=0x20）")
+        self.console._robot.sent_frames.clear()
+        self.console.arm_torque(key, False)
+        self.assertEqual(self._led(0x40), ids, "断使能 → 切回绿灯（d[5]=0x40）")
+
+    def test_single_servo_torque_toggles_led(self) -> None:
+        self.console.torque(3, True)
+        self.assertEqual(self._led(0x20), {3})
+        self.console.torque(3, False)
+        self.assertEqual(self._led(0x40), {3})
+
+    def test_goto_reasserts_led_after_motion(self) -> None:
+        """位置指令会清灯（d[5] 高三位与 LED 颜色位同域）→ 运动后必须补发。"""
+        self.console.torque(3, True)                 # 蓝
+        self.console._robot.sent_frames.clear()
+        self.console.goto(3, adc=600)
+        self.assertEqual(self._led(0x20), {3}, "goto 后应补发该舵机的蓝灯")
+
+    def test_arm_goto_reasserts_led_for_moved_joints(self) -> None:
+        key = sorted(self.arms)[0]
+        arm = self.arms[key]
+        self.console.arm_torque(key, True)           # 蓝
+        self.console._robot.sent_frames.clear()
+        self.console.arm_goto(key, {"shoulder_pan": 15.0})
+        moved = {arm.joints["shoulder_pan"].servo_id}
+        self.assertEqual(self._led(0x20), moved, "整臂运动只补发被驱动关节的灯")
+
+    def test_follow_cycle_reasserts_follower_led(self) -> None:
+        if "leader" not in self.arms or "follower" not in self.arms:
+            raise unittest.SkipTest("配置缺少 leader/follower，跳过")
+        self.console.arm_torque("follower", True)    # 蓝
+        fj = self.arms["follower"].joints["shoulder_pan"]
+        with self.console._follow_data_lock:         # 构造一个会让该关节运动的目标
+            self.console._follow_target = {fj.servo_id: fj.zero_adc + 30}
+            self.console._follow_cur = {fj.servo_id: float(fj.zero_adc)}
+            self.console._follow_vel = {fj.servo_id: 0.0}
+        self.console._follow_last = {}
+        self.console._follow_tuning = (60.0, 20)     # 陡斜坡：首拍就有可见位移
+        self.console._robot.sent_frames.clear()
+        self.console._follow_tick(self.arms["follower"], 0.02, None)
+        self.assertEqual(self._led(0x20), {fj.servo_id},
+                         "控制拍下发后应补发该关节的蓝灯")
+
+    def test_stop_all_returns_green(self) -> None:
+        self.console.stop_all()
+        online = set(self.console.state()["online"])
+        self.assertEqual(self._led(0x40), online, "紧急停止（断力矩）→ 回绿灯")
+
+    def test_follow_start_sets_master_green_follower_blue(self) -> None:
+        leader, follower = "leader", "follower"
+        if leader not in self.arms or follower not in self.arms:
+            raise unittest.SkipTest("配置缺少 leader/follower，跳过")
+        self.console.follow_start(leader, follower, interval_ms=5000)
+        try:
+            self.assertEqual(self._led(0x40), set(self.arms[leader].servo_ids),
+                             "主动臂断力矩 → 绿灯")
+            self.assertEqual(self._led(0x20), set(self.arms[follower].servo_ids),
+                             "从动臂使能 → 蓝灯")
+        finally:
+            self.console.follow_stop()
+
+    def test_disconnect_turns_leds_off(self) -> None:
+        online = set(self.console.state()["online"])
+        robot = self.console._robot          # disconnect 后 _robot 会被置空
+        self.console.disconnect()
+        leds = {f[2] for f in robot.sent_frames
+                if f[4] == P.ServoCmd.SET_LED and f[5] == 0x00}
+        self.assertEqual(leds, online, "断开连接 → 灯灭（d[5]=0x00）")
+        self.console.connect()               # 恢复连接给同类的后续用例
+
+
+class TestArmTorqueAndScanHealth(unittest.TestCase):
+    """整臂使能（承重关节 H 档保持）与 3 轮扫描的机械臂健康判定。
+
+    直接调 `WebConsole` 方法（不起 HTTP），用 mock 总线检查下发的帧：
+    * ``arm_torque`` 对全关节发 ``0x10``，承重关节额外收到**目标 = 当前位置**
+      的 **H 档**位置指令（把保持出力锁到最大）；
+    * ``arm_goto`` / ``arm_home`` 对承重关节恒用 H 档，其余关节按调用方档位；
+    * ``scan`` 3 轮取并集；任一臂的舵机离线 → ``abnormal: true``。
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        from romanbo.arm import WEIGHT_BEARING_JOINTS, discover
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        skeleton, arms = discover(os.path.join(root, "urdf", "Romanbo.urdf"),
+                                  os.path.join(root, "config"))
+        if not arms:
+            raise unittest.SkipTest("仓库缺少 config/*.json 或 urdf/，跳过")
+        cls.weight = WEIGHT_BEARING_JOINTS
+        cls.arms = arms
+        cls.console = WebConsole(mock=True, arms=arms, skeleton=skeleton)
+        cls.console.connect()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls.console.disconnect()
+
+    def setUp(self) -> None:
+        self.console.scan()                      # 恢复在线集合到全在线
+        self.console._robot.sent_frames.clear()
+
+    # -- 工具 -------------------------------------------------------------- #
+
+    def _positions(self) -> list[tuple[int, int, int]]:
+        """SET_POSITION 帧 → ``(servo_id, adc, 档位)``。"""
+        return [(f[2], ((f[5] & 0x07) << 8) | f[6], (f[5] >> 3) & 0x03)
+                for f in self.console._robot.sent_frames
+                if f[4] == P.ServoCmd.SET_POSITION]
+
+    def _torque_ids(self) -> set[int]:
+        return {f[2] for f in self.console._robot.sent_frames
+                if f[4] == P.ServoCmd.SET_TORQUE}
+
+    # -- 用例 -------------------------------------------------------------- #
+
+    def test_arm_torque_enables_all_and_high_for_weight_bearing(self) -> None:
+        key = sorted(self.arms)[0]
+        arm = self.arms[key]
+        robot = self.console._robot
+        # mock 位置可能被同类的早先用例移动过：断言「目标 = 调用前的当前位置」
+        before = {sid: robot.servo(sid).get_position() for sid in arm.servo_ids}
+        result = self.console.arm_torque(key, True)
+        self.assertEqual(self._torque_ids(), set(arm.servo_ids))
+        self.assertEqual(set(result["enabled"]), set(arm.joints))
+        expected_high = {n for n in arm.joints if n in self.weight}
+        self.assertEqual(set(result["high"]), expected_high)
+        positions = self._positions()
+        for name in expected_high:
+            sid = arm.joints[name].servo_id
+            hits = [p for p in positions if p[0] == sid]
+            self.assertTrue(hits, f"{name} 未收到 H 档保持指令")
+            self.assertEqual(hits[0][1], before[sid], "目标应为当前位置（不动）")
+            self.assertEqual(hits[0][2], P.LEVEL_HIGH)
+
+    def test_arm_torque_off_only_disables(self) -> None:
+        key = sorted(self.arms)[0]
+        arm = self.arms[key]
+        result = self.console.arm_torque(key, False)
+        self.assertEqual(self._torque_ids(), set(arm.servo_ids))
+        self.assertEqual(self._positions(), [], "断开力矩不应附带位置指令")
+        self.assertEqual(result["high"], [])
+
+    def test_arm_goto_keeps_high_level_for_weight_bearing(self) -> None:
+        key = sorted(self.arms)[0]
+        arm = self.arms[key]
+        # 显式要求 L 档：承重关节仍必须是 H，其余关节按 L
+        self.console.arm_goto(key, {"shoulder_lift": 5.0, "wrist_roll": 5.0},
+                              level=P.LEVEL_LOW)
+        levels = {sid: lv for sid, _adc, lv in self._positions()}
+        self.assertEqual(levels[arm.joints["shoulder_lift"].servo_id],
+                         P.LEVEL_HIGH)
+        self.assertEqual(levels[arm.joints["wrist_roll"].servo_id], P.LEVEL_LOW)
+
+    def test_scan_union_of_three_rounds_and_arm_abnormal(self) -> None:
+        def wait_rounds(n):
+            deadline = time.time() + 8
+            while self.console.state()["scan_rounds"] < n and time.time() < deadline:
+                time.sleep(0.01)
+            return self.console.state()
+
+        result = self.console.scan()
+        self.assertEqual(result["rounds"], 1)
+        self.assertTrue(result["arms"])
+        state = wait_rounds(3)
+        self.assertEqual(state["scan_rounds"], 3)
+        for key, health in state["arms"].items():
+            self.assertFalse(health["abnormal"], f"{key} 全在线不应异常")
+            self.assertEqual(health["missing"], [])
+        # 只有 ID 1、2 应答 → 每条臂都有离线关节 → 全部判异常（兜底后仍如此）
+        self.console.scan(1, 2)
+        state = wait_rounds(3)
+        for key, health in state["arms"].items():
+            self.assertTrue(health["abnormal"], f"{key} 应判异常")
+        follower = state["arms"].get("follower")
+        self.assertIsNotNone(follower)
+        self.assertIn(arm_id := self.arms["follower"].joints["shoulder_lift"].servo_id,
+                      follower["missing"], f"shoulder_lift(ID {arm_id}) 应在离线表")
+
+
+class TestFollowMode(unittest.TestCase):
+    """主从模式：主动臂断力矩、从动臂使能，实时读主动臂关节角控制从动臂。"""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        from romanbo.arm import WEIGHT_BEARING_JOINTS, discover
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        skeleton, arms = discover(os.path.join(root, "urdf", "Romanbo.urdf"),
+                                  os.path.join(root, "config"))
+        if not {"leader", "follower"} <= set(arms):
+            raise unittest.SkipTest("仓库缺少 leader/follower 臂配置，跳过")
+        cls.weight = WEIGHT_BEARING_JOINTS
+        cls.arms = arms
+        cls.console = WebConsole(mock=True, arms=arms, skeleton=skeleton)
+        cls.console.connect()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls.console.follow_stop()
+        cls.console.disconnect()
+
+    def setUp(self) -> None:
+        self.console.follow_stop()
+        self.leader = self.arms["leader"]
+        self.follower = self.arms["follower"]
+        # 隔离上一条用例留下的跟随状态（目标/插值/速度/已发值/调参）
+        with self.console._follow_data_lock:
+            self.console._follow_target = {}
+            self.console._follow_cur = {}
+            self.console._follow_vel = {}
+        self.console._follow_last = {}
+        self.console._follow_tuning = (60.0, 20)     # 测试默认：陡斜坡，首拍可见位移
+
+    # -- 工具 --------------------------------------------------------------
+
+    def _settled(self) -> bool:
+        """所有期望目标都已精确贴齐且速度归零（梯形规划收敛）。"""
+        c = self.console
+        with c._follow_data_lock:
+            for sid, target in c._follow_target.items():
+                cur = c._follow_cur.get(sid)
+                if (cur is None or abs(target - cur) > c.FOLLOW_DEADBAND_ADC
+                        or c._follow_vel.get(sid, 0.0) != 0.0):
+                    return False
+        return True
+
+    def _tick_until_settled(self, dt: float = 0.02, limit: int = 5000) -> None:
+        """确定性驱动控制拍的纯计算部分直到收敛（不起真线程）。"""
+        levels = self.follower.default_levels() or None
+        for _ in range(limit):
+            self.console._follow_tick(self.follower, dt, levels)
+            if self._settled():
+                return
+        self.fail("控制拍在限次内未收敛到期望目标")
+
+    def _mock(self):
+        return self.console._robot.transport._inner
+
+    def _positions(self) -> list:
+        """SET_POSITION 帧 → ``(servo_id, adc, 档位)``。"""
+        return [(f[2], ((f[5] & 0x07) << 8) | f[6], (f[5] >> 3) & 0x03)
+                for f in self.console._robot.sent_frames
+                if f[4] == P.ServoCmd.SET_POSITION]
+
+    # -- 用例 -------------------------------------------------------------- #
+
+    def test_same_arm_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            self.console.follow_start("leader", "leader")
+
+    def test_follow_maps_master_angles_via_smooth_control(self) -> None:
+        """采样拍只更新目标（不下发）→ 控制拍平滑收敛到映射目标，承重 H 档。"""
+        mock = self._mock()
+        for i, j in enumerate(self.leader.joints.values()):
+            mock.positions[j.servo_id] = j.zero_adc + (i + 1) * 20
+        self.console._robot.sent_frames.clear()
+        self.console._follow_once(self.leader, self.follower)
+        self.assertFalse(self._positions(),
+                         "采样拍不应直接下发位置（由控制拍插值下发）")
+        self._tick_until_settled()
+        sent = {sid: (adc, lvl) for sid, adc, lvl in self._positions()}
+        self.assertEqual(set(sent), set(self.follower.servo_ids))
+        for name, mj in self.leader.joints.items():
+            fj = self.follower.joints[name]
+            adc, lvl = sent[fj.servo_id]
+            expected = fj.deg_to_adc(fj.clamp(mj.adc_to_deg(mock.positions[mj.servo_id])))
+            self.assertEqual(adc, expected, f"{name} 收敛后应到达 URDF 角映射目标")
+            if name in self.weight:
+                self.assertEqual(lvl, P.LEVEL_HIGH, f"{name} 承重关节应 H 档")
+        # 收敛后：再跑控制拍不重发任何帧（死区 + 值没变 → 停发）
+        before = len(self.console._robot.sent_frames)
+        for _ in range(3):
+            self.console._follow_tick(self.follower, 0.02, None)
+        self.assertEqual(len(self.console._robot.sent_frames), before,
+                         "已收敛的关节不应继续重发")
+
+        # 只动主动臂一个关节 → 只有对应从动关节重新开始插值下发
+        name0 = next(iter(self.leader.joints))
+        mj0, fj0 = self.leader.joints[name0], self.follower.joints[name0]
+        mock.positions[mj0.servo_id] += 60
+        self.console._follow_once(self.leader, self.follower)
+        before = len(self._positions())
+        for _ in range(3):
+            self.console._follow_tick(self.follower, 0.02, None)
+        delta = self._positions()[before:]
+        self.assertEqual({p[0] for p in delta}, {fj0.servo_id},
+                         "只有目标变化了的关节才应重新下发")
+
+    def test_follow_tick_limits_speed_and_ramps_up(self) -> None:
+        """限速 + 平滑起步：单拍位移不超限，起步为匀加速斜坡（第2拍≈2×第1拍）。"""
+        mock = self._mock()
+        name0 = next(iter(self.leader.joints))
+        mj0, fj0 = self.leader.joints[name0], self.follower.joints[name0]
+        mock.positions[mj0.servo_id] = mj0.zero_adc + 300   # 大位移（远超死区）
+        with self.console._follow_data_lock:
+            self.console._follow_cur = {fj0.servo_id: float(fj0.zero_adc)}
+            self.console._follow_vel = {}
+        self.console._follow_once(self.leader, self.follower)
+        self.console._follow_tuning = (60.0, 150)           # 60 °/s，150 ms 斜坡
+        dt = 0.02
+        vmax = 60.0 / J.RATIO_MAIN                          # °/s → ADC/s
+        accel = vmax / 0.15
+        curs = []
+        for _ in range(3):
+            self.console._follow_tick(self.follower, dt, None)
+            with self.console._follow_data_lock:
+                curs.append(self.console._follow_cur[fj0.servo_id])
+        d1, d2 = abs(curs[0] - fj0.zero_adc), abs(curs[1] - curs[0])
+        self.assertLessEqual(d1, vmax * dt + 1e-6, "单拍位移不得超过限速")
+        self.assertAlmostEqual(d2, 2.0 * d1, delta=1e-6,
+                               msg="起步应为匀加速斜坡（第 2 拍位移 ≈ 2 × 第 1 拍）")
+        # 起步斜坡期间速度远低于限速（平滑插值，不是全速扑向目标）
+        self.assertLess(d2 / dt, vmax * 0.5,
+                        "150 ms 斜坡内速度不应过早达到限速上限")
+
+    def test_follow_start_seeds_cur_from_capture(self) -> None:
+        """起步插值锚点 = 从动臂当前实际位置（capture），而不是主动臂姿态。"""
+        mock = self._mock()
+        fj = self.follower.joints["shoulder_pan"]
+        mock.positions[fj.servo_id] = fj.zero_adc + 40
+        try:
+            self.console.follow_start("leader", "follower", interval_ms=5000)
+            with self.console._follow_data_lock:
+                cur = dict(self.console._follow_cur)
+            self.assertIsNotNone(cur.get(fj.servo_id))
+            self.assertLessEqual(abs(cur[fj.servo_id] - mock.positions[fj.servo_id]),
+                                 3.0, "起步锚点应为从动臂当前实际位置（±控制拍位移）")
+        finally:
+            self.console.follow_stop()
+
+    def test_follow_start_records_tuning(self) -> None:
+        r = self.console.follow_start("leader", "follower", sample_ms=250,
+                                      control_ms=25, max_dps=45, ramp_ms=200)
+        try:
+            self.assertEqual((r["sample_ms"], r["control_ms"]), (250, 25))
+            self.assertEqual((r["max_dps"], r["ramp_ms"]), (45.0, 200))
+            st = self.console.state()["follow"]
+            self.assertEqual(st["sample_ms"], 250)
+        finally:
+            self.console.follow_stop()
+
+    def test_follow_legacy_interval_ms_alias(self) -> None:
+        r = self.console.follow_start("leader", "follower", interval_ms=5000)
+        try:
+            self.assertEqual(r["sample_ms"], 5000, "旧参数 interval_ms 应映射为采样周期")
+        finally:
+            self.console.follow_stop()
+
+    def test_start_stop_lifecycle_and_torque_frames(self) -> None:
+        result = self.console.follow_start("leader", "follower", interval_ms=5000)
+        self.assertTrue(result["active"])
+        self.assertEqual((result["master"], result["follower"]), ("leader", "follower"))
+        deadline = time.time() + 2
+        off = on = set()
+        while time.time() < deadline:
+            frames = self.console._robot.sent_frames
+            off = {f[2] for f in frames
+                   if f[4] == P.ServoCmd.SET_TORQUE and f[5] == 0}
+            on = {f[2] for f in frames
+                  if f[4] == P.ServoCmd.SET_TORQUE and f[5] == 1}
+            if (set(self.leader.servo_ids) <= off
+                    and set(self.follower.servo_ids) <= on):
+                break
+            time.sleep(0.02)
+        self.assertLessEqual(set(self.leader.servo_ids), off, "主动臂应全部断力矩")
+        self.assertLessEqual(set(self.follower.servo_ids), on, "从动臂应全部使能")
+        self.assertTrue(self.console.state()["follow"]["active"])
+        stopped = self.console.follow_stop()
+        self.assertFalse(stopped["active"])
+        self.assertFalse(self.console.state()["follow"]["active"])
+
+    def test_stop_all_also_stops_follow(self) -> None:
+        self.console.follow_start("leader", "follower", interval_ms=5000)
+        self.console.stop_all()
+        self.assertFalse(self.console.state()["follow"]["active"],
+                         "紧急停止应一并停掉主从跟随")
+
+    def test_scan_busy_yields_and_real_outage_fails(self) -> None:
+        """整拍无应答：扫描占用总线时让路（不算失败），真失联才抛错计失败。"""
+        mock = self._mock()
+        mock.auto_ack = False          # 所有应答消失 → 所有读超时
+        self.console._follow_read = {j.servo_id: 512
+                                     for j in self.leader.joints.values()}
+        try:
+            self.console._scan_busy = True
+            self.assertFalse(self.console._follow_once(self.leader, self.follower),
+                             "扫描期间应整拍让路（返回 False，不抛错）")
+            self.console._scan_busy = False
+            with self.assertRaises(RuntimeError):
+                self.console._follow_once(self.leader, self.follower)
+        finally:
+            self.console._scan_busy = False
+            mock.auto_ack = True
 
 
 class TestCliWiring(unittest.TestCase):
@@ -461,6 +984,14 @@ class TestPageIntegrity(unittest.TestCase):
         self.assertEqual(PAGE.count("__TOKEN__"), 1,
                          "占位符必须恰好出现一次，否则替换会漏或覆盖错位置")
 
+    def test_api_401_is_explained_once(self) -> None:
+        """服务重启后旧页面的令牌全部 401（每个按钮都报晦涩错误）。
+
+        页面必须：识别 401 → 给出「用新链接打开」指引 → ``tokenDead`` 防重。
+        """
+        self.assertIn("res.status === 401", PAGE, "api() 没有单独处理 401")
+        self.assertIn("tokenDead", PAGE, "缺了只提示一次的开关")
+
     def test_no_leftover_debug_markers(self) -> None:
         for marker in ("console.log", "TODO", "FIXME", "debugger"):
             self.assertNotIn(marker, PAGE, f"页面里残留了调试标记：{marker}")
@@ -483,7 +1014,7 @@ class TestConsoleConcurrency(unittest.TestCase):
         self.console.disconnect()
 
     def _start_slow_move(self) -> threading.Thread:
-        """后台跑一次约 2 s 的运动（512→900 @60°/s，19 步 × 100 ms）。"""
+        """后台跑一次约 2.6 s 的运动（512→900 @60°/s，默认 20 ms 节拍）。"""
         thread = threading.Thread(
             target=self.console.goto,
             kwargs={"id_": 1, "adc": 900, "speed_dps": 60}, daemon=True)

@@ -394,7 +394,8 @@ def cmd_webui(robot: Optional[RomanboRobot], args: argparse.Namespace) -> int:
         return serve(host=args.http_host, port=args.http_port,
                      serial_port=args.port, mock=args.mock,
                      baudrate=args.baudrate, ack_timeout=args.timeout,
-                     open_browser=args.open_browser)
+                     open_browser=args.open_browser,
+                     urdf_path=args.urdf, config_dir=args.arm_dir)
     except OSError as exc:                                   # 端口被占用等
         print(f"无法启动控制台：{exc}", file=sys.stderr)
         return 1
@@ -1271,6 +1272,11 @@ def build_parser() -> argparse.ArgumentParser:
                    help="HTTP 端口（默认 8765；0 = 由系统分配）")
     p.add_argument("--open", dest="open_browser", action="store_true",
                    help="启动后自动打开浏览器")
+    p.add_argument("--urdf", default=None,
+                   help="URDF 路径（默认自动查找 urdf/Romanbo.urdf，"
+                        "加载后页面提供 TF 树可视化）")
+    p.add_argument("--arm-dir", default=None,
+                   help="机械臂配置目录（默认自动查找 config/，内含 *.json）")
     p.set_defaults(func=cmd_webui, need_robot=False)
 
     return parser

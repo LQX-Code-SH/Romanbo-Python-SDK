@@ -34,11 +34,11 @@ class TestPeriodSpeedConversion(unittest.TestCase):
     """周期 ↔ 角速度的换算（用于报告与 --period 场景，不决定舵机行为）。"""
 
     def test_period_matches_angle_over_speed(self) -> None:
-        self.assertEqual(J.period_for_speed(51, 15), 997)
-        self.assertEqual(J.period_for_speed(-51, 15), 997)
+        self.assertEqual(J.period_for_speed(51, 15), 1196)
+        self.assertEqual(J.period_for_speed(-51, 15), 1196)
 
     def test_speed_of_is_inverse(self) -> None:
-        self.assertAlmostEqual(J.speed_of(51, 997), 15.0, places=2)
+        self.assertAlmostEqual(J.speed_of(51, 1196), 15.0, places=1)
 
     def test_frame_period_takes_largest_displacement(self) -> None:
         # 多关节帧：取最大角位移，保证没有关节超速（写 .rsc 时挑 Period 用）
@@ -57,10 +57,10 @@ class TestPeriodSpeedConversion(unittest.TestCase):
 
 class TestPlanMove(unittest.TestCase):
     def test_ramp_ends_exactly_on_target(self) -> None:
-        # Δ=102 ADC ≈ 29.9°；60°/s、间隔 100ms → 每步约 20 ADC → 5 步
+        # Δ=102 ADC ≈ 35.9°；60°/s、间隔 100ms → 每步约 17 ADC → 6 步
         steps = J.plan_move(512, 614, 60, interval_ms=100)
-        self.assertEqual([adc for _, adc in steps], [532, 553, 573, 594, 614])
-        self.assertEqual([dt for dt, _ in steps], [0.1] * 5)
+        self.assertEqual([adc for _, adc in steps], [529, 546, 563, 580, 597, 614])
+        self.assertEqual([dt for dt, _ in steps], [0.1] * 6)
         # 平均角速度 = 位移 / 总时长
         # 步数取整会带来少量量化误差（±2% 以内）
         total = sum(dt for dt, _ in steps)
@@ -68,14 +68,27 @@ class TestPlanMove(unittest.TestCase):
 
     def test_direction_and_zero_delta(self) -> None:
         steps = J.plan_move(614, 512, 60, interval_ms=100)
-        self.assertEqual([adc for _, adc in steps], [594, 573, 553, 532, 512])
-        self.assertEqual([adc for _, adc in steps][0:1], [614 - 20])
+        self.assertEqual([adc for _, adc in steps], [597, 580, 563, 546, 529, 512])
+        self.assertEqual([adc for _, adc in steps][0:1], [614 - 17])
+
+    def test_default_interval_is_20ms(self) -> None:
+        """平滑到位默认 50 Hz 插值（2026-10-11 从 100 ms 提高）。
+
+        60°/s、20 ms/拍 → 每步 round(60×0.02/0.3519) = 3 ADC；Δ=102 → 34 步，
+        余量均摊后每步恰好 3 ADC、末步精确落在目标。
+        """
+        steps = J.plan_move(512, 614, 60)
+        self.assertEqual([dt for dt, _ in steps], [0.02] * 34)
+        self.assertEqual([adc for _, adc in steps][0], 515)
+        self.assertEqual(steps[-1][1], 614)
+        # 低速自动拉长间隔，保证每步 ≥1 ADC（5°/s 需要 80 ms）
+        self.assertEqual(J.pick_step_interval(5), 80)
         self.assertEqual(J.plan_move(512, 512, 60), [])
 
     def test_slower_speed_means_more_steps(self) -> None:
         fast = J.plan_move(512, 614, 120, interval_ms=100)
         slow = J.plan_move(512, 614, 60, interval_ms=100)
-        self.assertEqual((len(fast), len(slow)), (2, 5))
+        self.assertEqual((len(fast), len(slow)), (3, 6))
         self.assertGreater(len(slow), len(fast))
 
     def test_interval_grows_for_very_low_speed(self) -> None:
@@ -105,7 +118,7 @@ class TestServoStepwise(unittest.TestCase):
         self.robot.sent_frames.clear()
         sent = servo.move_at_speed(614, 60, current=512, interval_ms=100,
                                    torque=None, sleep=_noop)
-        self.assertEqual(sent, [532, 553, 573, 594, 614])
+        self.assertEqual(sent, [529, 546, 563, 580, 597, 614])
         self.assertEqual(_commands(self.robot, P.ServoCmd.SET_PERIOD), [])
         self.assertEqual(self.mock.positions[1], 614)
 
@@ -113,7 +126,7 @@ class TestServoStepwise(unittest.TestCase):
         self.robot.servo(1).rotate(30, speed_dps=60, current=512, sleep=_noop)
         self.assertEqual(_commands(self.robot, P.ServoCmd.SET_PERIOD), [])
         frames = _positions_for(self.robot, 1)
-        self.assertEqual(frames[-1], 512 + 102)
+        self.assertEqual(frames[-1], 512 + 85)
         self.assertGreater(len(frames), 1)
 
     def test_period_and_speed_conflict(self) -> None:
@@ -253,9 +266,9 @@ class TestRobotStepwise(unittest.TestCase):
         self.robot.move({1: 614, 2: 563}, speed_dps=60,
                         start={1: 512, 2: 512}, step_interval_ms=100,
                         sleep=_noop)
-        # 关节1：Δ102 → 5 步；关节2：Δ51 → 3 步（到位后不再重复下发）
+        # 关节1：Δ102 → 6 步；关节2：Δ51 → 3 步（到位后不再重复下发）
         self.assertEqual(_positions_for(self.robot, 1),
-                         [532, 553, 573, 594, 614])
+                         [529, 546, 563, 580, 597, 614])
         self.assertEqual(_positions_for(self.robot, 2), [529, 546, 563])
         self.assertEqual(_commands(self.robot, P.ServoCmd.SET_PERIOD), [])
 
@@ -290,8 +303,8 @@ class TestPlayWithSpeed(unittest.TestCase):
                                  step_interval_ms=100, sleep=slept.append)
         self.assertEqual(played, 3)
         self.assertEqual(_commands(self.robot, P.ServoCmd.SET_PERIOD), [])
-        # 第二段：3 个关节各 5 步；首段无位移、第三段保持姿势 → 只按文件 Period 停留
-        self.assertEqual(len(_commands(self.robot, P.ServoCmd.SET_POSITION)), 15)
+        # 第二段：3 个关节各 6 步；首段无位移、第三段保持姿势 → 只按文件 Period 停留
+        self.assertEqual(len(_commands(self.robot, P.ServoCmd.SET_POSITION)), 18)
         self.assertEqual([_positions_for(self.robot, i)[-1] for i in (1, 2, 3)],
                          [614, 614, 614])
         self.assertIn(0.25, slept)                       # 保持姿势的帧

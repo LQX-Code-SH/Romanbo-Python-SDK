@@ -6,7 +6,7 @@ from __future__ import annotations
 import threading
 import time
 from dataclasses import dataclass
-from typing import Callable, Dict, Iterable, List, Mapping, Optional
+from typing import Callable, Dict, Iterable, List, Mapping, Optional, Union
 
 from . import joints as J
 from . import protocol as P
@@ -86,11 +86,15 @@ class RomanboRobot:
     # -- 生命周期 ---------------------------------------------------------- #
 
     def open(self) -> "RomanboRobot":
-        self.transport.open()
+        # 取 _io_lock：与在途收发串行化，避免「读/写进行到一半 fd 被关」
+        # （pyserial 会报 "write failed: [Errno 9] Bad file descriptor"）
+        with self._io_lock:
+            self.transport.open()
         return self
 
     def close(self) -> None:
-        self.transport.close()
+        with self._io_lock:
+            self.transport.close()
 
     def __enter__(self) -> "RomanboRobot":
         return self.open()
@@ -329,12 +333,20 @@ class RomanboRobot:
         for id_ in (list(ids) if ids is not None else self._known_ids()):
             self.servo(id_).set_led(value)
 
+    @staticmethod
+    def _level_for(level: Optional[Union[int, Mapping[int, int]]],
+                   id_: int) -> Optional[int]:
+        """``level`` 为逐关节表时取出该关节的档位，否则原样返回。"""
+        if isinstance(level, Mapping):
+            return level.get(id_)
+        return level
+
     def move(self, positions: Mapping[int, int], *, period_ms: int = 500,
              torque: int = P.ON, relative: int = 0, mode: str = "position",
              speed_dps: Optional[float] = None,
              start: Optional[Mapping[int, int]] = None,
              step_interval_ms: Optional[int] = None,
-             level: Optional[int] = None,
+             level: Optional[Union[int, Mapping[int, int]]] = None,
              max_load: Optional[int] = None,
              load_check_every: int = 1,
              sleep: Callable[[float], None] = time.sleep,
@@ -342,6 +354,10 @@ class RomanboRobot:
              wait: bool = False,
              led: Optional[Mapping[int, int]] = None) -> None:
         """多关节运动。速度用 ``speed_dps``（实际角速度）或 ``period_ms`` 表达。
+
+        ``level`` —— 出力档位，可以是**全局档位**（``LEVEL_HIGH`` 等），也可以是
+        ``{servo_id: 档位}`` 的**逐关节表**（缺的关节用库默认 M 档）——机械臂的
+        承重关节要 H 档、其余关节随调用方选择时就用它。
 
         ``speed_dps`` —— **实际角速度（度/秒）**
             用**步进逼近**实现（见 `Servo.move_at_speed`：实测舵机固件忽略
@@ -378,7 +394,7 @@ class RomanboRobot:
             if mode == "position":
                 self.servo(id_).set_position(int(position), period_ms=period_ms,
                                              torque=torque, relative=relative,
-                                             level=level)
+                                             level=self._level_for(level, id_))
             else:
                 self.servo(id_).next_position(int(position), period_ms=period_ms,
                                               torque=torque, relative=relative,
@@ -397,7 +413,7 @@ class RomanboRobot:
     def _move_stepwise(self, positions: Mapping[int, int], dps: float, *,
                        start: Optional[Mapping[int, int]] = None,
                        interval_ms: Optional[int] = None, torque: int = P.ON,
-                       level: Optional[int] = None,
+                       level: Optional[Union[int, Mapping[int, int]]] = None,
                        max_load: Optional[int] = None,
                        load_check_every: int = 1,
                        sleep: Callable[[float], None] = time.sleep) -> None:
@@ -423,7 +439,7 @@ class RomanboRobot:
             else:
                 plans[id_] = []
                 self.servo(id_).set_position(int(position), torque=torque,
-                                             level=level)
+                                             level=self._level_for(level, id_))
         moving = {id_: plan for id_, plan in plans.items() if plan}
         if not moving:
             return
@@ -433,8 +449,8 @@ class RomanboRobot:
         watch_ids = sorted(moving)
         peaks: Dict[int, int] = {}
         #: 同 `Servo.move_at_speed`：按**绝对时刻**排拍（``deadline`` 每拍累加 ``dt``），
-        #: 否则 ``sleep`` 的过冲会逐拍累积（Windows 的 ``Sleep`` 粒度约 15.6 ms，一拍才
-        #: 100 ms，长动作最坏慢 13%）。这样负荷回读的往返、sleep 过冲都会在下一拍补回来，
+        #: 否则 ``sleep`` 的过冲会逐拍累积（Windows 的 ``Sleep`` 粒度约 15.6 ms，与默认
+        #: 节拍 20 ms 同量级）。这样负荷回读的往返、sleep 过冲都会在下一拍补回来，
         #: 总时长 ≈ N×dt + 一次过冲；帧间隔由 `romanbo.protocol.MIN_FRAME_GAP` 兜底。
         deadline = time.perf_counter()
         for tick in range(ticks):
@@ -442,7 +458,8 @@ class RomanboRobot:
                 adc = plan[tick] if tick < len(plan) else plan[-1]
                 if last_sent.get(id_) == adc:
                     continue
-                self.servo(id_).set_position(adc, torque=torque, level=level)
+                self.servo(id_).set_position(adc, torque=torque,
+                                             level=self._level_for(level, id_))
                 last_sent[id_] = adc
             deadline += dt
             budget = deadline - time.perf_counter()
