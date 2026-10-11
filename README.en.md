@@ -77,6 +77,10 @@ python -m romanbo --port COM3 play examples/data/demo.rsc --speed 60
 
 # Inspect a project file (offline)
 python -m romanbo info examples/data/demo.rsc
+
+# Web console (local-only; --mock needs no hardware): 3D visualization,
+# master–slave following, live readouts, raw frame log
+python -m romanbo webui --mock
 ```
 
 Global options: `-p/--port`, `--mock`, `--baudrate`, `--timeout`, `--json`, `--frames`.
@@ -196,7 +200,7 @@ Details: [`docs/SAFETY.md`](docs/SAFETY.md) and [`docs/SERVO_SPEC.md`](docs/SERV
 |---|---|
 | [Install & environment](docs/INSTALL.md) | dependencies, usage modes, Linux/macOS permissions, concurrency |
 | [CLI reference](docs/CLI.md) | all subcommands, global options, exit codes, `--json` contract |
-| [Web console](docs/WEBUI.md) | local-only web UI: connect/scan, live readouts, motion, parameters, raw frame log |
+| [Web console](docs/WEBUI.md) | local-only web UI: connect/scan, live readouts, motion, parameters, raw frame log, arm 3D visualization (URDF + STL), master–slave following |
 | [`.rsc` project files](docs/RSC.md) | structure, teach → export, playback semantics |
 | [Software load limiting](docs/LOAD_LIMITING.md) | rationale, how to pick threshold & check interval, API |
 | [Safety & limits](docs/SAFETY.md) | dangerous commands, unsupported / unverified list |

@@ -68,6 +68,7 @@ ROMANBO 舵机控制台已启动，请用浏览器打开：
 | 参数写入 | PID / 位置限位 / Margin / **LED（8 色可选：灭/红/绿/蓝/黄/紫/青/白）** / 零点校准，**写入后回读确认**，失败会报错 |
 | 报文日志 | TX/RX 原始十六进制 + 命令码名，可暂停 / 清空 / 自动滚动 |
 | 机械臂 3D | URDF + STL 的 WebGL 视图（滑块目标位姿预览）；开关：TF 坐标轴、**关节轴**（红箭头 = 转轴、绿圈 = 旋转平面）。交互：**左键拖动** 旋转视角、**右键拖动** 平移视角、**滚轮** 缩放、**点击关节竖向拖动** 控制该关节（松手按平滑档下发；跟随运行时禁用）。无 WebGL 自动退回 2D 骨架图 |
+| 主从跟随 | 主动臂断力矩示教，从动臂**限速平滑跟随**：采样线程（默认 200 ms）低频读主动臂目标，控制线程（默认 20 ms）每拍做一步**梯形速度规划**（斜坡起步 → 限速 → 按距离自然减速），使能瞬间不会猛跳；承重关节恒 H 档。可调采样/控制节拍、限速与起步斜坡；持续失联约 3~4 s 自动停止 |
 
 ## HTTP 接口
 
@@ -86,6 +87,8 @@ ROMANBO 舵机控制台已启动，请用浏览器打开：
 | POST | `/api/servo/{id}/goto` | `{adc\|angle, speed_dps, max_load, level, load_check_every}` |
 | POST | `/api/servo/{id}/torque`、`/pid`、`/limit`、`/margin`、`/calib` | 见界面 |
 | POST | `/api/servo/{id}/led` | `{red, green, blue}`（推荐）或 `{value}`（低 3 位 = 红/绿/蓝）；响应含**实际下发的 `d[5]`** |
+| POST | `/api/follow/start` | 主从跟随：`{master, follower, sample_ms, control_ms, max_dps, ramp_ms}`（默认 leader → follower，200/20 ms，60 °/s，150 ms 斜坡；`interval_ms` 为旧参数 = 采样周期） |
+| POST | `/api/follow/stop` | 停止主从跟随 |
 | POST | `/api/move` | `{targets:{id:adc}, speed_dps, max_load, level, load_check_every}` |
 | POST | `/api/stop_all` | 对所有在线舵机断开力矩（未扫描时向 1..32 广播）。**不排队**：**故意不取设备锁**，因此运动进行中也能立即生效（每帧只短暂占用收发锁，能插进运动节拍之间） |
 

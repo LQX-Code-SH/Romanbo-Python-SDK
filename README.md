@@ -28,7 +28,9 @@
 - **时序按实测确定**：帧间隔、总线静默期、重试策略都不是猜的（见[实测结论](docs/FINDINGS.md)）
 - **离线可用**：`.rsc` 解析、报文编码、`--mock` 模拟器、60 条基准报文自检全部零依赖
 - **可视化控制台**：`python -m romanbo webui` 起一个只监听本机的 Web 界面——扫描、运动、
-  读写参数，并把**原始收发报文**实时打在页面上（见[可视化控制台](docs/WEBUI.md)）
+  读写参数，并把**原始收发报文**实时打在页面上；带**机械臂 3D 可视化**
+  （URDF + STL 的 WebGL 视图，可点击关节拖动控制）与**主从跟随**
+  （主动臂断力矩示教，从动臂限速平滑跟随）（见[可视化控制台](docs/WEBUI.md)）
 - **工程化**：270 项单元测试（无需硬件）+ CI（Python 3.8~3.13）+ 类型标注（`py.typed`）
 
 ## 安装
@@ -104,6 +106,7 @@ with RomanboRobot("/dev/ttyUSB0") as robot:      # 或 connect("COM3", mock=True
 | `ServoConfig` | 一次读回的全部参数（字段 `load` 为实测负荷） |
 | `LoadLimitExceeded` | 软件限力触发（`.as_dict()` 便于上报） |
 | `RscProject` / `MotionFrame` | `.rsc` 工程解析与生成 |
+| `arm` | 机械臂配置（`config/*.json`）加载与 URDF 骨架解析、正向运动学（3D 可视化与主从跟随用） |
 | `joints` / `protocol` / `transport` | 换算与步进规划 / 帧编解码与命令码 / 串口与离线模拟 |
 
 完整签名与字段说明见 **[API 参考](docs/api.md)**（由 docstring 自动生成）。
@@ -126,7 +129,7 @@ with RomanboRobot("/dev/ttyUSB0") as robot:      # 或 connect("COM3", mock=True
 |---|---|
 | [安装与环境](docs/INSTALL.md) | 依赖、三种用法、Linux/macOS 权限、平台差异、并发边界 |
 | [命令行参考](docs/CLI.md) | 全部子命令、全局选项、退出码、`--json` 输出契约 |
-| [可视化控制台](docs/WEBUI.md) | 只监听本机的 Web 界面：连接/扫描、实时读数、运动与参数读写、原始报文日志 |
+| [可视化控制台](docs/WEBUI.md) | 只监听本机的 Web 界面：连接/扫描、实时读数、运动与参数读写、原始报文日志、机械臂 3D 可视化、主从跟随 |
 | [工程文件 `.rsc`](docs/RSC.md) | 三层结构、示教导出、播放语义 |
 | [软件限力](docs/LOAD_LIMITING.md) | 原理、阈值与检查间隔怎么选、API 与退出码 |
 | [安全与已知限制](docs/SAFETY.md) | 危险命令、不支持/未验证清单、软件边界 |
