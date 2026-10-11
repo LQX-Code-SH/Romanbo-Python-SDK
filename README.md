@@ -150,9 +150,12 @@ with RomanboRobot("/dev/ttyUSB0") as robot:      # 或 connect("COM3", mock=True
 ## 项目结构
 
 ```
-romanbo/            核心包（protocol / transport / servo / robot / rsc / joints / cli / golden）
+romanbo/            核心包（protocol / transport / servo / robot / rsc / joints / arm / webui / cli / golden）
 docs/               文档（协议规格、实测结论、API 参考、证据日志）
 examples/           示例脚本 + data/demo.rsc 样例工程
+config/             机械臂配置（主动/从动臂的舵机 ID 映射、零位 ADC、限位）
+urdf/               URDF 模型与 mesh（webui 3D 可视化用）
+deploy/             udev 串口权限规则（Linux）
 tests/              270 项单元测试（不需要硬件）
 tools/servo_probe.py  单舵机原始十六进制联调工具
 ```

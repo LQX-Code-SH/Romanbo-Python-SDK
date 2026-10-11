@@ -19,9 +19,11 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 #: 需要与代码同步的文档（相对仓库根）
-CURRENT_STATE_DOCS = ("README.md", "docs/TESTING.md")
+CURRENT_STATE_DOCS = ("README.md", "README.en.md", "docs/TESTING.md")
 #: 形如「237 项单元测试」
 COUNT_PATTERN = re.compile(r"(\d+)\s*项单元测试")
+#: 英文 README 写法：形如「129 unit tests」
+COUNT_PATTERN_EN = re.compile(r"(\d+)\s+unit tests")
 
 
 class TestDocumentedCounts(unittest.TestCase):
@@ -38,7 +40,9 @@ class TestDocumentedCounts(unittest.TestCase):
         checked = 0
         for rel in CURRENT_STATE_DOCS:
             text = (self.root / rel).read_text(encoding="utf-8")
-            found = COUNT_PATTERN.findall(text)
+            found = [n for n in COUNT_PATTERN.findall(text)]
+            if rel == "README.en.md":
+                found += COUNT_PATTERN_EN.findall(text)
             for number in found:
                 with self.subTest(doc=rel, documented=number):
                     self.assertEqual(

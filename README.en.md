@@ -220,15 +220,18 @@ Docs site: <https://lqx-code-sh.github.io/Romanbo-Python-SDK/>
 ## Project layout
 
 ```
-romanbo/            SDK package (protocol / transport / servo / robot / rsc / joints / cli …)
+romanbo/            SDK package (protocol / transport / servo / robot / rsc / joints / arm / webui / cli / golden)
 docs/               protocol spec, test plan, API reference, evidence logs
 examples/           runnable examples + data/demo.rsc
-tests/              129 unit tests (no hardware required)
+config/             arm configs (servo ID maps, zero ADC, limits for leader/follower)
+urdf/               URDF model + meshes (for webui 3D visualization)
+deploy/             udev rules for serial permissions (Linux)
+tests/              270 unit tests (no hardware required)
 tools/servo_probe.py  raw hex probe for bench debugging
 ```
 
 ```bash
-python -m unittest discover -s tests -t .   # 129 unit tests
+python -m unittest discover -s tests -t .   # 270 unit tests
 python -m romanbo selftest                  # 60 reference frames
 python -m pip install -e ".[docs]" && python -m mkdocs serve   # docs site locally
 ```

@@ -8,6 +8,8 @@
 * `romanbo.robot`     —— 整机 API（握手、扫描、同步动作、示教、播放）
 * `romanbo.rsc`       —— ``.rsc`` 工程（动作数据）解析
 * `romanbo.joints`    —— 机型/关节与 ADC↔角度换算
+* `romanbo.arm`       —— 机械臂配置（``config/*.json``）与 URDF 正向运动学
+* `romanbo.webui`     —— 本地可视化控制台（CLI 子命令 ``webui``，延迟导入）
 * `romanbo.golden`    —— 基准报文自检
 
 最小用法：
