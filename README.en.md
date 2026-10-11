@@ -19,6 +19,11 @@ measurements, verification procedures and unverified boundaries live in
 
 📖 **Documentation site:** <https://lqx-code-sh.github.io/Romanbo-Python-SDK/>
 
+![Web console UI](docs/UI.png)
+
+*Web console: arm 3D view (URDF + STL, click a joint and drag to control),
+joint sliders and master–slave following, with the raw TX/RX frame log.*
+
 ---
 
 ## Requirements & installation
